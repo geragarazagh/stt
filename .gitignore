@@ -1,0 +1,5 @@
+.DS_Store
+STT.app
+STT.zip
+vendor/CTranscribe.framework
+.notary.json
