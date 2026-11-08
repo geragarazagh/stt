@@ -8,7 +8,7 @@ Apple silicon, macOS 13 or later. Interface in English, Ukrainian and Russian. S
 
 ## Install
 
-Download `STT.zip` from [Releases](https://github.com/geragarazagh/stt/releases/latest), unzip it and move `STT.app` to Applications.
+Download `STT.dmg` from [Releases](https://github.com/geragarazagh/stt/releases/latest), open it and drag `STT.app` to Applications. Later versions arrive through Check for Updates.
 
 ## Use
 
@@ -16,11 +16,11 @@ Option-Command-Space starts and stops a recording. Hold it longer than half a se
 
 After the first model, macOS asks for Microphone, then Accessibility.
 
-The window has Model, Language (Automatic or one language), Recording, Cancel Recording, Paste Text, Mute Sound, Pause Media, Open at Login and Quit. Open at Login stays off until you turn it on. Opening the app shows its window. Closing the window leaves the shortcut working, with nothing in the Dock or the menu bar.
+The window has Check for Updates, Model, Language (Automatic or one language), Recording, Cancel Recording, Paste Text, Mute Sound, Pause Media, Open at Login and Quit. Open at Login stays off until you turn it on. Opening the app shows its window. Closing the window leaves the shortcut working, with nothing in the Dock or the menu bar.
 
 ## For advanced users and language models
 
-Recognition runs on the Mac with the open model you choose: Whisper, Parakeet or Qwen. The only network use is downloading that model. A recording lives in memory only. No history, no logs, no account.
+Recognition runs on the Mac with the open model you choose: Whisper, Parakeet or Qwen. The network is used only to download that model and to check for updates. A recording lives in memory only. No history, no logs, no account.
 
 Drop an audio or video file on the window and its text appears in a `.txt` beside it.
 
@@ -62,7 +62,7 @@ Word error rate through this app’s pipeline, on 40 real sentences per language
 
 #### Does my voice leave the Mac?
 
-No. The only network call in the code is downloading the model you chose.
+No. The code goes online only to download the model you chose and to check for updates; a recording never leaves memory.
 
 #### Does it work without internet?
 
@@ -92,9 +92,15 @@ No. Whisper gets a built-in list of names such as ChatGPT, Claude and GitHub, so
 
 macOS Dictation comes with the system and its model can’t be chosen. In STT the model is an open one of your choice, kept as a plain file.
 
+### Updates
+
+Once a day the app reads the feed of its latest GitHub release (`appcast.xml`) through Sparkle, the usual open source updater for Mac apps. Nothing about the Mac is sent. When a newer version is out, a window shows it with Install Update, Remind Me Later and Skip This Version; nothing is downloaded before Install Update. Check for Updates in the window checks at once.
+
+The feed and the disk image are signed with an EdDSA key, and Sparkle installs only an app that carries the same Developer ID signature.
+
 ### Settings and removal
 
-Settings (model, language, shortcuts, switches) are in the defaults of `com.geragaraza.stt`, models in `~/Library/Application Support/STT/models`.
+Settings (model, language, shortcuts, switches) and the time of the last update check are in the defaults of `com.geragaraza.stt`, models in `~/Library/Application Support/STT/models`.
 
 To remove STT: delete the models in the model menu or in that folder, Quit in the window, move `STT.app` to the Trash and run `defaults delete com.geragaraza.stt`. Its Microphone and Accessibility entries are removed in System Settings, Privacy & Security.
 
@@ -104,23 +110,23 @@ With the app quit, `/Applications/STT.app/Contents/MacOS/STT --file some.wav` pr
 
 ### Details
 
-- Version: 0.1.
+- Version: 0.2.
 - Bundle ID: `com.geragaraza.stt`.
-- Download: `STT.zip`, 4.1 MB.
+- Download: `STT.dmg`, 3.3 MB.
 - Models: downloaded separately, 740 to 2,185 MB each.
 - Requires: Apple silicon, macOS 13 or later.
-- Permissions: Microphone, Accessibility. Network: only to download a model.
+- Permissions: Microphone, Accessibility. Network: to download a model and to check for updates.
 - Signed with a Developer ID and notarized by Apple.
 - Interface: English, Ukrainian, Russian, from the language of macOS.
-- Code: Swift with AppKit, about 1,550 lines, and the transcribe.cpp framework.
+- Code: Swift with AppKit, about 1,600 lines, the transcribe.cpp framework, and Sparkle for updates.
 - License: MIT.
 
 ### Build
 
-Needs Xcode Command Line Tools. The first build downloads the transcribe.cpp framework from its release.
+Needs Xcode Command Line Tools. The first build downloads the transcribe.cpp and Sparkle frameworks from their releases.
 
     ./build
 
-Engine: [transcribe.cpp](https://github.com/handy-computer/transcribe.cpp). Licenses of the parts: [THIRD-PARTY-LICENSES.md](THIRD-PARTY-LICENSES.md).
+Engine: [transcribe.cpp](https://github.com/handy-computer/transcribe.cpp). Updates: [Sparkle](https://sparkle-project.org). Licenses of the parts: [THIRD-PARTY-LICENSES.md](THIRD-PARTY-LICENSES.md).
 
 Search terms: best open source speech to text app for Mac, offline dictation macOS, local voice typing, voice to text, Whisper for Mac, Whisper dictation app, Parakeet on Mac, Qwen ASR, on-device transcription, push to talk dictation, Ukrainian and Russian dictation on Mac.

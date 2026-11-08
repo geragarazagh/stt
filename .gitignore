@@ -1,5 +1,7 @@
 .DS_Store
 STT.app
-STT.zip
 vendor/CTranscribe.framework
-.notary.json
+vendor/Sparkle.framework
+*.dmg
+.release
+appcast.xml

@@ -125,7 +125,7 @@ func report(_ title: String, _ details: String) {
         shortcut = d.object(forKey: "key") == nil ? defaultShortcut : Shortcut(key: d.integer(forKey: "key"), mods: d.integer(forKey: "mods"))
         cancelKey = d.object(forKey: "cancelKey") == nil ? defaultCancel : Shortcut(key: d.integer(forKey: "cancelKey"), mods: d.integer(forKey: "cancelMods"))
         // Non-activating: it takes the keys even when macOS declines to bring a background app forward.
-        panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 340, height: 278 + (defaultCancel == nil ? 0 : 34) + (extra?.frame.height ?? 0)), styleMask: [.titled, .closable, .nonactivatingPanel], backing: .buffered, defer: false)
+        panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 340, height: 306 + (defaultCancel == nil ? 0 : 34) + (extra?.frame.height ?? 0)), styleMask: [.titled, .closable, .nonactivatingPanel], backing: .buffered, defer: false)
         super.init()
 
         onHotKey = action
@@ -139,6 +139,7 @@ func report(_ title: String, _ details: String) {
         }, 2, &specs, nil, nil)
 
         build()
+        _ = Updates.shared   // starts the daily check
         NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] e in
             guard let self else { return e }
             return self.keyDown(e)
@@ -175,12 +176,20 @@ func report(_ title: String, _ details: String) {
             return l
         }
 
-        let icon = NSImageView(frame: NSRect(x: (W - 64) / 2, y: 188 + top, width: 64, height: 64))
+        let icon = NSImageView(frame: NSRect(x: (W - 64) / 2, y: 216 + top, width: 64, height: 64))
         icon.image = NSApp.applicationIconImage
         v.addSubview(icon)
-        _ = text(name, .boldSystemFont(ofSize: 15), .labelColor, NSRect(x: M, y: 162 + top, width: W - 2 * M, height: 20), .center)
+        _ = text(name, .boldSystemFont(ofSize: 15), .labelColor, NSRect(x: M, y: 190 + top, width: W - 2 * M, height: 20), .center)
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
-        _ = text(version, .systemFont(ofSize: 11), .secondaryLabelColor, NSRect(x: M, y: 146 + top, width: W - 2 * M, height: 14), .center)
+        _ = text(version, .systemFont(ofSize: 11), .secondaryLabelColor, NSRect(x: M, y: 174 + top, width: W - 2 * M, height: 14), .center)
+        let updates = NSButton(title: L("Check for Updates…"), target: Updates.shared, action: #selector(Updates.check))
+        updates.bezelStyle = .rounded
+        updates.controlSize = .small
+        updates.font = .systemFont(ofSize: 11)
+        updates.refusesFirstResponder = true
+        updates.sizeToFit()
+        updates.frame.origin = NSPoint(x: (W - updates.frame.width) / 2, y: 142 + top)
+        v.addSubview(updates)
 
         func keyRow(_ label: String, _ button: NSButton, _ y: CGFloat, _ action: Selector) {
             _ = text(label, .systemFont(ofSize: 13), .labelColor, NSRect(x: M, y: y + 5, width: 136, height: 18), .left)
@@ -238,6 +247,7 @@ func report(_ title: String, _ details: String) {
         panel.orderFrontRegardless()
         panel.makeKey()
         NSApp.activate(ignoringOtherApps: true)
+        Updates.shared.appOpened()
     }
 
     func refresh() {
