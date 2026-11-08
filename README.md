@@ -27,7 +27,7 @@ Drop an audio or video file on the window and its text appears in a `.txt` besid
 ### How it works
 
 - Engine: transcribe.cpp (MIT), one interface over Whisper, Parakeet and Qwen; each model is a single `.gguf` file.
-- Models download from Hugging Face (`handy-computer/<model>-gguf`) at a fixed revision and are checked against a SHA-256 written in the code.
+- Models download from the `handy-computer` repositories on Hugging Face at a fixed revision and are checked against a SHA-256 written in the code.
 - The microphone is recorded through `AVAudioEngine` into memory; nothing is written to disk.
 - Before recognition, silence is cut out and long speech is split at pauses into pieces of up to 30 s. Most models lose accuracy past 30-40 s in one run, and on silence Whisper invents text, such as «Субтитры сделал DimaTorzok», a line it picked up from subtitles.
 - Filler sounds (э-э, мм, uh, um and the like) are removed by a fixed pattern after recognition. Words are never changed.
