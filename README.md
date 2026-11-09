@@ -8,7 +8,13 @@ Apple silicon, macOS 13 or later. Interface in English, Ukrainian and Russian. S
 
 ## Install
 
-Download `STT.dmg` from [Releases](https://github.com/geragarazagh/stt/releases/latest), open it and drag `STT.app` to Applications. Later versions arrive through Check for Updates.
+With [Homebrew](https://brew.sh):
+
+```sh
+brew install geragarazagh/tap/stt
+```
+
+Or download `STT.dmg` from [Releases](https://github.com/geragarazagh/stt/releases/latest), open it and drag `STT.app` to Applications. Later versions arrive through Check for Updates.
 
 ## Use
 
@@ -103,6 +109,8 @@ The feed and the disk image are signed with an EdDSA key, and Sparkle installs o
 Settings (model, language, shortcuts, switches) and the time of the last update check are in the defaults of `com.geragaraza.stt`, models in `~/Library/Application Support/STT/models`.
 
 To remove STT: delete the models in the model menu or in that folder, Quit in the window, move `STT.app` to the Trash and run `defaults delete com.geragaraza.stt`. Its Microphone and Accessibility entries are removed in System Settings, Privacy & Security.
+
+Installed with Homebrew, `brew uninstall --zap stt` quits it and removes the app, its settings and the models; the Microphone and Accessibility entries stay for System Settings.
 
 ### From Terminal
 
