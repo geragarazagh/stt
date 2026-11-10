@@ -6,6 +6,8 @@ Free, open source speech to text app for macOS. Press a keyboard shortcut in any
 
 Apple silicon, macOS 13 or later. Interface in English, Ukrainian and Russian. Signed with a Developer ID and notarized by Apple.
 
+![STT in use: Leo Tolstoy's phonograph recordings of 1908-1909 in Russian, French, English and German, transcribed through Open With, a .txt beside each in Finder, and the letter he dictated on 9 April 1908 in TextEdit as STT heard it, unedited, dark appearance](docs/scene.webp)
+
 ## Install
 
 Download `STT.dmg` from [Releases](https://github.com/geragarazagh/stt/releases/latest), open it and drag `STT.app` to Applications. Later versions arrive through Check for Updates.
