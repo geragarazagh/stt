@@ -55,3 +55,15 @@
 "Choose File…" = "Выбрать файл…";
 "Transcribe" = "Распознать";
 "The text is on the clipboard." = "Текст в буфере обмена.";
+"Dictionary" = "Словарь";
+"Edit…" = "Изменить…";
+"Words" = "Слова";
+"Names and terms written exactly as here. Return adds a word." = "Названия и термины будут написаны так, как здесь. Return добавляет слово.";
+"Restore" = "Восстановить";
+"Replacements" = "Замены";
+"What a model writes, and what to write instead. For every model." = "Что пишет модель и что писать вместо этого. Для всех моделей.";
+"Heard" = "Слышится";
+"Written" = "Пишется";
+"Parakeet doesn’t take a word list: only replacements work with it." = "Parakeet не берёт список слов: с ним работают только замены.";
+"A password field is active" = "Открыто поле пароля";
+"The text was not pasted or copied." = "Текст не вставлен и не скопирован.";

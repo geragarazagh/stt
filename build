@@ -3,7 +3,7 @@
 set -e
 cd "${0:A:h}"
 # It changes per release, not per build.
-version=0.3 min=13.0 id=com.geragaraza.stt app=STT.app engine=0.4.1
+version=0.4 min=13.0 id=com.geragaraza.stt app=STT.app engine=0.4.1
 tmp=$(mktemp -d); trap 'rm -rf $tmp' EXIT
 rm -rf "$app" STT.zip
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources" "$app/Contents/Frameworks"
@@ -39,7 +39,7 @@ done
 
 swiftc -O -target arm64-apple-macos$min -parse-as-library -module-name STT -F vendor -framework CTranscribe -framework Sparkle \
   -Xlinker -rpath -Xlinker @executable_path/../Frameworks -lc++ -lz -framework Accelerate -framework Metal -framework MetalKit \
-  -o "$app/Contents/MacOS/STT" entry.swift engine.swift window.swift files.swift media.swift download.swift updates.swift vendor/*.swift 2>&1 | grep -E "error" || true
+  -o "$app/Contents/MacOS/STT" entry.swift engine.swift dictionary.swift window.swift files.swift media.swift download.swift updates.swift vendor/*.swift 2>&1 | grep -E "error" || true
 [ -x "$app/Contents/MacOS/STT" ]
 
 # App icon, Apple's way since 2026-11-09: an Icon Composer document (the picture from icon.swift, the plate is the

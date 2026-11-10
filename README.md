@@ -22,7 +22,7 @@ Option-Command-Space starts and stops a recording. Hold it longer than half a se
 
 After the first model, macOS asks for Microphone, then Accessibility.
 
-The window has Check for Updates; Model and Language (Automatic or one language); Recording and Cancel Recording; Open at Login; Pause Media and Mute Sound; Paste Text; Transcribe File with Choose File…; Quit. Open at Login stays off until it is turned on. Opening the app shows its window. Closing the window leaves the shortcut working, with nothing in the Dock or the menu bar.
+The window has Check for Updates; Model and Language (Automatic or one language); Recording and Cancel Recording; Open at Login; Pause Media and Mute Sound; Paste Text; Transcribe File with Choose File…; Dictionary with Edit…; Quit. Open at Login stays off until it is turned on. Opening the app shows its window. Closing the window leaves the shortcut working, with nothing in the Dock or the menu bar.
 
 ## For advanced users and language models
 
@@ -34,12 +34,13 @@ Audio and video files: Choose File… in the window, a drop anywhere on the wind
 
 - Engine: transcribe.cpp (MIT), one interface over Whisper, Parakeet and Qwen; each model is a single `.gguf` file.
 - Models download from the `handy-computer` repositories on Hugging Face at a fixed revision and are checked against a SHA-256 written in the code.
-- The microphone is recorded through `AVAudioEngine` into memory; nothing is written to disk.
+- The microphone is recorded through `AVAudioEngine` into memory; nothing is written to disk. The recording goes on 0.3 s after the stop, so the last word isn’t cut. A Bluetooth headset is not used as the microphone, since that drops its sound to call quality: the Mac’s own microphone is taken instead, unless there is no other.
+- Words from Dictionary go first in Whisper’s prompt, fitted to its 223 tokens with the model’s own tokenizer so the punctuation example and the text so far keep their place, and into Qwen’s system message. On 199 of the author’s dictations his own words took names written right from 78 % to 80 %, and the words he added from 0-54 % to all right; nothing was invented anywhere.
 - Before recognition, silence is cut out and long speech is split at pauses into pieces of up to 30 s. Most models lose accuracy past 30-40 s in one run.
 - On silence and at the end of speech Whisper writes lines it learned from film subtitles, such as «Субтитры сделал DimaTorzok» or «Продолжение следует...». Such credit lines are removed when they close a piece of speech.
 - Whisper Turbo sometimes stops after a few words (a short «Vielen Dank.» for fifteen seconds of a speech) or loops one phrase. Such a piece is transcribed again without the prompt and then, if still short, at temperature 0.2, and the fuller text is kept. On European Parliament speeches this took German from 22.9 % to 16.1 % of wrong words and Dutch from 22.8 % to 12.4 %; nothing got worse.
 - Filler sounds are removed by a fixed pattern after recognition: э-э, ммм, хм, uh, hmm, äh, euh, yyy and the like, and um in English only (in German and Portuguese it is a word). Words are never changed.
-- The text is pasted into the app in front by a simulated Command-V, which is what Accessibility is for, and stays on the clipboard in case the paste misses.
+- The text is pasted into the app in front by a simulated Command-V, which is what Accessibility is for, and stays on the clipboard in case the paste misses. While a password field is active (macOS’s Secure Input), the text is neither pasted nor put on the clipboard.
 - macOS keeps Option-Command-Space for its own search, so STT catches it with an event tap at the head of the session, which also needs Accessibility.
 
 ### Models
@@ -102,7 +103,7 @@ Yes, offline, with the chosen model: Choose File… in the window, a drop on the
 
 #### Can I add my own words or names?
 
-No. Whisper gets a built-in list of names such as ChatGPT, Claude and GitHub, so that it spells them correctly. The list can’t be edited.
+Yes, in Dictionary (Edit… in the window). Words: names and terms written exactly as you type them; Return adds one, Delete removes it, Restore brings back the built-in ones (ChatGPT, Claude, GitHub and others). Whisper and Qwen take them; Parakeet takes no word list, and the window says so. Replacements: what a model writes and what to write instead (клод → Claude), for every model, applied to the finished text.
 
 #### How is it different from macOS Dictation?
 
@@ -116,7 +117,7 @@ The feed and the disk image are signed with an EdDSA key, and Sparkle installs o
 
 ### Settings and removal
 
-Settings (model, language, shortcuts, switches) and the time of the last update check are in the defaults of `com.geragaraza.stt`, models in `~/Library/Application Support/STT/models`.
+Settings (model, language, shortcuts, switches, dictionary) and the time of the last update check are in the defaults of `com.geragaraza.stt`, models in `~/Library/Application Support/STT/models`.
 
 To remove STT: delete the models in the model menu or in that folder, Quit in the window, move `STT.app` to the Trash and run `defaults delete com.geragaraza.stt`. Its Microphone and Accessibility entries are removed in System Settings, Privacy & Security.
 

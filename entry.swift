@@ -16,6 +16,8 @@
 
 import AppKit
 import AVFoundation
+import AudioToolbox
+import CoreAudio
 import Carbon.HIToolbox
 import UniformTypeIdentifiers
 
@@ -69,6 +71,9 @@ final class Recorder {
     func start() throws {
         let engine = AVAudioEngine()
         let input = engine.inputNode
+        if var other = notBluetooth(), let unit = input.audioUnit {
+            AudioUnitSetProperty(unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0, &other, UInt32(MemoryLayout<AudioDeviceID>.size))
+        }
         let from = input.outputFormat(forBus: 0)
         guard from.sampleRate > 0, let to = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16000, channels: 1, interleaved: false),
               let converter = AVAudioConverter(from: from, to: to) else { throw NSError(domain: "No audio input", code: 1) }
@@ -96,6 +101,33 @@ final class Recorder {
         lock.lock(); defer { lock.unlock() }
         return samples
     }
+}
+
+// A Bluetooth headset as the default input: taking its microphone switches it to the headset profile, which makes
+// every sound the person hears thin and mono until the recording ends, and records them at 8-16 kHz. So the Mac's own
+// microphone is taken instead, or any other one that isn't Bluetooth; only when there is none the headset is used.
+// nil: keep the default.
+func notBluetooth() -> AudioDeviceID? {
+    func get<T>(_ id: AudioObjectID, _ selector: AudioObjectPropertySelector, _ value: inout T) -> Bool {
+        var a = AudioObjectPropertyAddress(mSelector: selector, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+        var size = UInt32(MemoryLayout<T>.size)
+        return AudioObjectGetPropertyData(id, &a, 0, nil, &size, &value) == noErr
+    }
+    func transport(_ d: AudioDeviceID) -> UInt32 { var t: UInt32 = 0; _ = get(d, kAudioDevicePropertyTransportType, &t); return t }
+    func bluetooth(_ d: AudioDeviceID) -> Bool { [kAudioDeviceTransportTypeBluetooth, kAudioDeviceTransportTypeBluetoothLE].contains(transport(d)) }
+    var current = AudioDeviceID(0)
+    guard get(AudioObjectID(kAudioObjectSystemObject), kAudioHardwarePropertyDefaultInputDevice, &current), bluetooth(current) else { return nil }
+    var a = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDevices, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+    var size: UInt32 = 0
+    guard AudioObjectGetPropertyDataSize(AudioObjectID(kAudioObjectSystemObject), &a, 0, nil, &size) == noErr else { return nil }
+    var ids = [AudioDeviceID](repeating: 0, count: Int(size) / MemoryLayout<AudioDeviceID>.size)
+    guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &a, 0, nil, &size, &ids) == noErr else { return nil }
+    let inputs = ids.filter { d in
+        var s = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyStreams, mScope: kAudioObjectPropertyScopeInput, mElement: kAudioObjectPropertyElementMain)
+        var n: UInt32 = 0
+        return AudioObjectGetPropertyDataSize(d, &s, 0, nil, &n) == noErr && n > 0 && !bluetooth(d)
+    }
+    return inputs.first { transport($0) == kAudioDeviceTransportTypeBuiltIn } ?? inputs.first
 }
 
 // MARK: hot key
@@ -170,6 +202,8 @@ func startKeyTap(_ handler: @escaping (Int, Int, Bool, Bool) -> Bool) -> Bool {
             content.addSubview(drop)
         }
         rebuildMenu()
+        Words.onChange = { [weak self] in self?.passWords() }
+        passWords()
         if let m = current { load(m) } else { window?.show() }
         if AXIsProcessTrusted() { tryTap() }
         launched = true
@@ -250,7 +284,7 @@ func startKeyTap(_ handler: @escaping (Int, Int, Bool, Bool) -> Bool) -> Bool {
     }
 
     func applicationWillTerminate(_ n: Notification) {
-        if recording { _ = recorder.stop(); soundBack() }
+        if recording || stopping { _ = recorder.stop(); soundBack() }
         download?.cancel()
         for m in models { try? FileManager.default.removeItem(at: m.path.appendingPathExtension("part")) }
         engine.queue.sync { engine.release() }
@@ -303,8 +337,8 @@ func startKeyTap(_ handler: @escaping (Int, Int, Bool, Bool) -> Bool) -> Bool {
     // Open at Login (window.swift) sits with its middle 18 pt above this view's top edge, so the rows count down from it.
     func settingsRows() -> NSView {
         let gap: CGFloat = 51, step: CGFloat = 30
-        let pause = 18 - gap, mute = pause - step, paste = mute - gap, file = paste - gap   // middles, from the top edge
-        let height = -file + 14   // the file row's button is 28 tall and ends at the bottom edge
+        let pause = 18 - gap, mute = pause - step, paste = mute - gap, file = paste - gap, words = file - step - 4   // middles
+        let height = -words + 14   // the dictionary row's button is 28 tall and ends at the bottom edge
         let row = NSView(frame: NSRect(x: 0, y: 0, width: 340, height: height))
         func label(_ s: String, _ y: CGFloat) {
             let l = NSTextField(labelWithString: s)
@@ -328,16 +362,43 @@ func startKeyTap(_ handler: @escaping (Int, Int, Bool, Bool) -> Bool) -> Bool {
         toggle(L("Pause Media"), "pauseMedia", false, pause)
         toggle(L("Mute Sound"), "mute", false, mute)
         toggle(L("Paste Text"), "paste", true, paste)
-        label(L("Transcribe File"), 5)
-        // A real push button in the column of the key buttons, their frame and style (his word 2026-11-10: a dashed
-        // «Drop Here» well didn't look clickable). It opens the system's file chooser at once.
-        chooseButton.title = L("Choose File…")
-        chooseButton.frame = NSRect(x: 340 - 20 - 160, y: 0, width: 160, height: 28)
-        chooseButton.bezelStyle = .rounded
-        chooseButton.target = self; chooseButton.action = #selector(chooseFiles)
-        chooseButton.refusesFirstResponder = true
-        row.addSubview(chooseButton)
+        // Two actions, not settings, together at the bottom, 34 pt apart as two push buttons stacked (30 left them
+        // touching): a real push button each in the column of the key buttons, their frame and style (his word
+        // 2026-11-10: a dashed «Drop Here» well didn't look clickable).
+        func action(_ s: String, _ b: NSButton, _ title: String, _ middle: CGFloat, _ selector: Selector) {
+            let y = height + middle - 14
+            label(s, y + 5)
+            b.title = title
+            b.frame = NSRect(x: 340 - 20 - 160, y: y, width: 160, height: 28)
+            b.bezelStyle = .rounded
+            b.target = self; b.action = selector
+            b.refusesFirstResponder = true
+            row.addSubview(b)
+        }
+        // The system's file chooser at once.
+        action(L("Transcribe File"), chooseButton, L("Choose File…"), file, #selector(chooseFiles))
+        action(L("Dictionary"), wordsButton, L("Edit…"), words, #selector(showDictionary))
         return row
+    }
+
+    let wordsButton = NSButton(title: "", target: nil, action: nil)
+    var dictionary: DictionaryWindow?
+    @objc func showDictionary() {
+        if dictionary == nil {
+            let w = DictionaryWindow()
+            w.beside = { [weak self] in self?.window?.panel }
+            w.takesWords = { [weak self] in self?.current?.id != "parakeet-ultra" }
+            dictionary = w
+        }
+        dictionary?.show()
+    }
+
+    // The engine gets its own copy on its queue, at launch and after every change in the dictionary window.
+    func passWords() {
+        let all = Words.words, preset = Set(presetWords.map { $0.lowercased() }), pairs = Words.replacements
+        let own = all.filter { !preset.contains($0.lowercased()) }, builtIn = all.filter { preset.contains($0.lowercased()) }
+        let engine = self.engine
+        engine.queue.async { engine.ownWords = own; engine.builtIn = builtIn; engine.pairs = pairs }
     }
 
     // Cancelled, nothing else opens; chosen, the files window shows the work.
@@ -534,6 +595,7 @@ func startKeyTap(_ handler: @escaping (Int, Int, Bool, Bool) -> Bool) -> Bool {
     }
 
     func load(_ m: ASRModel) {
+        dictionary?.refresh()   // its line about Parakeet follows the model
         note.stringValue = L("Loading…")
         let engine = self.engine
         engine.queue.async {
@@ -554,6 +616,7 @@ func startKeyTap(_ handler: @escaping (Int, Int, Bool, Bool) -> Bool) -> Bool {
 
     func pressed() {
         if recording { finish(); return }
+        if stopping { return }
         guard current != nil else { window?.show(); return }   // or the words would be lost for want of a model
         switch AVCaptureDevice.authorizationStatus(for: .audio) {
         case .authorized: break
@@ -591,11 +654,20 @@ func startKeyTap(_ handler: @escaping (Int, Int, Bool, Bool) -> Bool) -> Bool {
         soundBack()
     }
 
+    // The last word often ends as the key goes down, and the sound of it reaches the recorder a little later: 0.3 s more
+    // keeps it (the silence after it is cut by the voice detector anyway). Sound and media come back after that, so the
+    // tail doesn't record them. A press during the tail is ignored.
+    let tailSeconds = 0.3
+    var stopping = false
     func finish() {
         recording = false
-        let pcm = recorder.stop()
-        soundBack()
-        transcribe(pcm)
+        stopping = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + tailSeconds) { [self] in
+            stopping = false
+            let pcm = recorder.stop()
+            soundBack()
+            transcribe(pcm)
+        }
     }
 
     // The recording exists only here, in memory, and goes when this ends. If recognition fails it can be tried again.
@@ -714,8 +786,19 @@ func startKeyTap(_ handler: @escaping (Int, Int, Bool, Bool) -> Bool) -> Bool {
         if !failures.isEmpty && !stopped { report(L("Transcription failed"), failures.joined(separator: "\n")) }
     }
 
+    // A password field is in front (macOS's Secure Input is on): the text is neither pasted nor left on the clipboard,
+    // where any app could read it. The alert says so, since nothing else would show that the dictation went nowhere.
+    // Some apps hold Secure Input for a while after their password field (a terminal's Secure Keyboard Entry too).
     func deliver(_ text: String) {
         guard !text.isEmpty else { return }
+        if pasteboard == .general, IsSecureEventInputEnabled() {
+            let a = NSAlert()
+            a.messageText = L("A password field is active")
+            a.informativeText = L("The text was not pasted or copied.")
+            NSApp.activate(ignoringOtherApps: true)
+            a.runModal()
+            return
+        }
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
         guard pasteboard == .general, isOn("paste", true) else { return }

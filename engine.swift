@@ -22,11 +22,17 @@ nonisolated(unsafe) var punctuationExamples = [
     "ar": "مرحبا، كيف حالك؟ أنا بخير، شكرا. حسنا، هيا بنا.",
 ]
 
-// Names people say that Whisper spells wrongly unless it has seen them. On 198 real dictations: Claude 0 > 16, ChatGPT 0 > 3,
-// GitHub 20 > 53; nothing invented in sentences that don't mention them. The engine's own vocabulary option refuses to
-// work beside a prompt, so they go first in the prompt, and only in the languages where they were measured not to hurt.
-let names = "ChatGPT, Claude, Claude Code, Anthropic, OpenAI, Gemini, Google, YouTube, TikTok, Instagram, Telegram, WhatsApp, Facebook, GitHub, iPhone, macOS. "
+// The dictionary's words (dictionary.swift) go first in Whisper's prompt: on 198 real dictations the 16 built-in names
+// took Claude 0 > 16, GitHub 20 > 53, nothing invented in sentences that don't mention them. The engine's own vocabulary
+// option refuses to work beside a prompt, so they are written into it. The built-in ones only in the languages where
+// they were measured not to hurt; a person's own words everywhere, since they put them there.
 nonisolated(unsafe) var nameLanguages: Set<String> = ["ru", "uk", "en", "de", "fr", "es", "nl", "tr", "ro", "pl", "sv", "vi", "ja"]
+
+// Whisper's prompt holds 223 tokens and, when longer, keeps its END: the words at its front would go first, silently.
+// So the prompt is fitted here with the model's own tokenizer: the words that fit (a person's first, then the built-in
+// ones in their order), the punctuation example always, then as much of the text so far as is left, at most 200
+// characters. Measured: a 230-token list left no room and took ё from 732 to 124 and the commas with it.
+let promptTokens = 220, contextTokens = 40   // 3 under the limit for the leading space; 40 ≈ 140 Russian letters of context
 
 // Everything the native library touches runs on one serial queue: a session is single-threaded.
 final class Engine: @unchecked Sendable {
@@ -36,20 +42,41 @@ final class Engine: @unchecked Sendable {
     private var vadModel: Model?
     private var vad: VadSession?
 
-    private var isWhisper = false
+    private var isWhisper = false, isQwen = false
     private var language: String?
     var forced: String?   // the language chosen in the window; nil lets the model detect it
+    // The dictionary, copied in on the engine's queue: own words, then the built-in ones still kept, and the replacements.
+    var ownWords: [String] = [], builtIn: [String] = [], pairs: [(heard: String, written: String)] = []
 
-    // Whisper only. Without an example of punctuation it often writes long runs of speech with none at all, and the
-    // end of the text so far keeps the grammar going across a cut.
-    private func options(_ hints: String, after text: String) -> RunOptions {
+    // Whisper: the words, an example of punctuation (without one it often writes long runs of speech with none at all),
+    // and the end of the text so far, which keeps the grammar going across a cut. Qwen: the words in its system message.
+    private func options(_ code: String?, after text: String) -> RunOptions {
+        if isQwen { return RunOptions(language: forced, vocabulary: ownWords + builtIn) }
         guard isWhisper else { return RunOptions(language: forced) }
-        return RunOptions(language: forced, family: .whisper(WhisperRunOptions(initialPrompt: hints + " " + text.suffix(200))))
+        return RunOptions(language: forced, family: .whisper(WhisperRunOptions(initialPrompt: prompt(code, after: text))))
     }
 
-    private func hints(_ code: String?) -> String {
+    private func tokens(_ s: String) -> Int { (try? model?.tokenize(" " + s).count) ?? s.utf8.count / 2 }
+
+    // Before the language is known (the first run of a dictation) the prompt is empty, as before the dictionary.
+    func prompt(_ code: String?, after text: String) -> String {
         guard let code else { return "" }
-        return (nameLanguages.contains(code) ? names : "") + (punctuationExamples[code] ?? "")
+        let example = punctuationExamples[code] ?? ""
+        let words = ownWords + (nameLanguages.contains(code) ? builtIn : [])
+        let tail = String(text.suffix(200))
+        let room = promptTokens - min(tokens(tail), contextTokens)
+        func head(_ n: Int) -> String { (n > 0 ? words.prefix(n).joined(separator: ", ") + ". " : "") + example }
+        var lo = 0, hi = words.count   // the most words that fit, by halving: the token count grows with the number
+        if tokens(head(hi)) > room {
+            while hi - lo > 1 { let mid = (lo + hi) / 2; if tokens(head(mid)) <= room { lo = mid } else { hi = mid } }
+            hi = lo
+        }
+        let fixed = head(hi)
+        var context = tail
+        while !context.isEmpty, tokens(fixed + " " + context) > promptTokens {
+            context = String(context.dropFirst(max(1, context.count / 8)))
+        }
+        return context.isEmpty ? fixed : fixed + " " + context
     }
 
     func load(path: String, vadPath: String? = Bundle.main.path(forResource: "silero-vad-v6.2-F32", ofType: "gguf")) throws {
@@ -61,6 +88,7 @@ final class Engine: @unchecked Sendable {
         model = try Model(path: path)
         session = try model!.session()
         isWhisper = model!.arch == "whisper"
+        isQwen = model!.arch.hasPrefix("qwen")
     }
 
     // The native side asserts at exit when a Metal resource is still alive, so everything is let go first.
@@ -76,15 +104,11 @@ final class Engine: @unchecked Sendable {
         for (i, piece) in all.enumerated() {
             if let shouldGoOn, !shouldGoOn(Double(i) / Double(all.count)) { throw Failure.stopped }
             // People mostly stay in one language, so the last one is tried first and a second run happens only on a change.
-            var hint = hints(forced ?? language)
-            var run = try session.run(piece, options: options(hint, after: text))
+            let hint = prompt(forced ?? language, after: text)
+            var run = try session.run(piece, options: options(forced ?? language, after: text))
             if isWhisper, forced == nil, i == 0, run.language != language {
                 language = run.language
-                let found = hints(language)
-                if found != hint {
-                    hint = found
-                    run = try session.run(piece, options: options(hint, after: text))
-                }
+                if prompt(language, after: text) != hint { run = try session.run(piece, options: options(language, after: text)) }
             }
             // Whisper Turbo sometimes stops after a few words: «Vielen Dank.» or «Grazie.» for fifteen seconds of a speech,
             // or loops one phrase. Measured on 320 parliament speeches in eight languages (VoxPopuli): 20 pieces. The same
@@ -110,7 +134,7 @@ final class Engine: @unchecked Sendable {
             }
             if !t.isEmpty { text += (text.isEmpty ? "" : " ") + t }
         }
-        return clean(text, language: spoken)
+        return replace(clean(text, language: spoken), pairs)
     }
 
     // Empty is not collapsed: over music or noise that got past the VAD an empty answer is the right one, and a run
