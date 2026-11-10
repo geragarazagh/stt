@@ -24,20 +24,20 @@ Option-Command-Space starts and stops a recording. Hold it longer than half a se
 
 After the first model, macOS asks for Microphone, then Accessibility.
 
-The window has Check for Updates; Model and Language (Automatic or one language); Recording and Cancel Recording; Open at Login; Pause Media and Mute Sound; Paste Text; Transcribe File with Choose File…; Dictionary with Edit…; Quit. Open at Login stays off until it is turned on. Opening the app shows its window. Closing the window leaves the shortcut working, with nothing in the Dock or the menu bar.
+The window has Check for Updates; Model and Language (Automatic or one language); Recording and Cancel Recording; Open at Login; Pause Media and Mute Sound; Paste Text; Transcribe File with Choose File…; Save Subtitles (.srt); Dictionary with Edit…; Quit. Open at Login stays off until it is turned on. Opening the app shows its window. Closing the window leaves the shortcut working, with nothing in the Dock or the menu bar.
 
 ## For advanced users and language models
 
 Recognition runs on the Mac with the open model you choose: Whisper, Parakeet or Qwen. The network is used only to download that model and to check for updates. A recording lives in memory only. No history, no logs, no account.
 
-Audio and video files: Choose File… in the window, a drop anywhere on the window, or Open With → STT in Finder. The text is saved beside the file as a `.txt` with the same name (`Interview.m4a` gives `Interview.txt`; an existing file is never overwritten, the new one is `Interview (2).txt`) and copied to the clipboard; it is not pasted. A small window shows the progress with Cancel, then the name of the `.txt`, which shows it in Finder when clicked. Several files go one after another; a dictation made meanwhile waits for the file.
+Audio and video files: Choose File… in the window, a drop anywhere on the window, or Open With → STT in Finder. The text is saved beside the file as a `.txt` with the same name (`Interview.m4a` gives `Interview.txt`; an existing file is never overwritten, the new one is `Interview (2).txt`) and copied to the clipboard; it is not pasted. A small window shows the progress with Cancel, then the name of the `.txt`, which shows it in Finder when clicked. Several files go one after another, each to its own `.txt`; a dictation made meanwhile waits for the file. With Save Subtitles (.srt) on, an `.srt` with timecodes goes beside the `.txt` under the same name (`Interview.srt`), one subtitle per stretch of speech the model marks. Files opened by another program than Finder or the Dock (`open -a STT` in Terminal, a script) are asked about first, since their text goes to the clipboard.
 
 ### How it works
 
 - Engine: transcribe.cpp (MIT), one interface over Whisper, Parakeet and Qwen; each model is a single `.gguf` file.
 - Models download from the `handy-computer` repositories on Hugging Face at a fixed revision and are checked against a SHA-256 written in the code.
 - The microphone is recorded through `AVAudioEngine` into memory; nothing is written to disk. The recording goes on 0.3 s after the stop, so the last word isn’t cut. A Bluetooth headset is not used as the microphone, since that drops its sound to call quality: the Mac’s own microphone is taken instead, unless there is no other.
-- Words from Dictionary go first in Whisper’s prompt, fitted to its 223 tokens with the model’s own tokenizer so the punctuation example and the text so far keep their place, and into Qwen’s system message. On 199 of the author’s dictations his own words took names written right from 78 % to 80 %, and the words he added from 0-54 % to all right; nothing was invented anywhere.
+- Words from Dictionary go first in Whisper’s prompt, fitted to its 223 tokens with the model’s own tokenizer so the punctuation example and the text so far keep their place, and into Qwen’s system message. On 199 of the author’s dictations his own words took names written right from 78 % to 80 %, and the words he added from 0-54 % to all right; nothing was invented anywhere. With the built-in pairs Whisper wrote 92 % of the names in his dictations right instead of 78 %, and Parakeet 72 % instead of 41 %.
 - Before recognition, silence is cut out and long speech is split at pauses into pieces of up to 30 s. Most models lose accuracy past 30-40 s in one run.
 - On silence and at the end of speech Whisper writes lines it learned from film subtitles, such as «Субтитры сделал DimaTorzok» or «Продолжение следует...». Such credit lines are removed when they close a piece of speech.
 - Whisper Turbo sometimes stops after a few words (a short «Vielen Dank.» for fifteen seconds of a speech) or loops one phrase. Such a piece is transcribed again without the prompt and then, if still short, at temperature 0.2, and the fuller text is kept. On European Parliament speeches this took German from 22.9 % to 16.1 % of wrong words and Dutch from 22.8 % to 12.4 %; nothing got worse.
@@ -101,11 +101,11 @@ Filler sounds such as “uh” are removed. Words are never touched. No AI rewri
 
 #### Can it transcribe audio or video files?
 
-Yes, offline, with the chosen model: Choose File… in the window, a drop on the window, or Open With → STT in Finder. The text is saved beside the file as a `.txt` with the same name and copied to the clipboard.
+Yes, offline, with the chosen model: Choose File… in the window, a drop on the window, or Open With → STT in Finder. The text is saved beside the file as a `.txt` with the same name (and, with Save Subtitles (.srt) on, an `.srt` with timecodes) and copied to the clipboard. Several files at once give a `.txt` each. Shortcuts and the command line `stt-cli` do the same without the window.
 
 #### Can I add my own words or names?
 
-Yes, in Dictionary (Edit… in the window). Words: names and terms written exactly as you type them; Return adds one, Delete removes it, Restore brings back the built-in ones (ChatGPT, Claude, GitHub and others). Whisper and Qwen take them; Parakeet takes no word list, and the window says so. Replacements: what a model writes and what to write instead (клод → Claude), for every model, applied to the finished text.
+Yes, in Dictionary (Edit… in the window). Words: names and terms written exactly as typed; Return adds one, Delete removes it, Restore brings back the 24 built-in ones (ChatGPT, Claude, GitHub and others). Whisper and Qwen take them; Parakeet takes no word list, and the window says so. Replacements: what a model writes and what to write instead, for every model, applied to the finished text; the table starts with 104 built-in pairs for names said in Russian or Ukrainian (клод → Claude, ютуб → YouTube), and its own Restore brings back removed ones.
 
 #### How is it different from macOS Dictation?
 
@@ -125,13 +125,25 @@ To remove STT: delete the models in the model menu or in that folder, Quit in th
 
 Installed with Homebrew, `brew uninstall --zap stt` quits it and removes the app, its settings and the models; the Microphone and Accessibility entries stay for System Settings.
 
-### From Terminal
+### Shortcuts
 
-With the app quit, `/Applications/STT.app/Contents/MacOS/STT --file some.wav` prints the text of a file through the chosen model; a model file name can follow.
+STT adds three actions to the Shortcuts app: Start Recording and Stop Recording act as the shortcut key does (the text is pasted as usual, and Stop Recording also gives it to the next action), and Transcribe File gives the text of an audio or video file to the next action without saving a `.txt`. A shortcut made of them can go on a key, a schedule or an automation.
+
+### Command line
+
+Homebrew links the command `stt-cli`; with the disk image, `ln -s /Applications/STT.app/Contents/MacOS/STT /usr/local/bin/stt-cli` makes it. It uses the model, language and dictionary chosen in the window.
+
+```sh
+stt-cli Interview.m4a > Interview.txt   # the text
+stt-cli --srt Interview.m4a             # subtitles
+stt-cli --toggle                        # start or stop a recording
+```
+
+Files are read with the rights of the program that runs the command, not the app’s. `--toggle` works the running app as its key does, and only for a program that has the Microphone permission itself (Terminal asks once). Started as an app or a launchd job rather than from a terminal or a script, the command refuses to run, since it would then act with STT’s own permissions.
 
 ### Details
 
-- Version: 0.3.
+- Version: 0.5.
 - Bundle ID: `com.geragaraza.stt`.
 - Download: `STT.dmg`, 4.2 MB.
 - Models: downloaded separately, 740 to 2,185 MB each.
