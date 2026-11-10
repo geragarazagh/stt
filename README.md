@@ -1,4 +1,4 @@
-<img src="docs/icon.png" width="128" alt="STT icon">
+<picture><source media="(prefers-color-scheme: dark)" srcset="docs/icon-dark.png"><img src="docs/icon.png" width="128" alt="STT icon"></picture>
 
 # STT (Speech to Text) for Mac
 
@@ -8,13 +8,13 @@ Apple silicon, macOS 13 or later. Interface in English, Ukrainian and Russian. S
 
 ## Install
 
-With [Homebrew](https://brew.sh):
+Download `STT.dmg` from [Releases](https://github.com/geragarazagh/stt/releases/latest), open it and drag `STT.app` to Applications. Later versions arrive through Check for Updates.
+
+Or with [Homebrew](https://brew.sh):
 
 ```sh
 brew install geragarazagh/tap/stt
 ```
-
-Or download `STT.dmg` from [Releases](https://github.com/geragarazagh/stt/releases/latest), open it and drag `STT.app` to Applications. Later versions arrive through Check for Updates.
 
 ## Use
 
@@ -22,21 +22,23 @@ Option-Command-Space starts and stops a recording. Hold it longer than half a se
 
 After the first model, macOS asks for Microphone, then Accessibility.
 
-The window has Check for Updates, Model, Language (Automatic or one language), Recording, Cancel Recording, Paste Text, Mute Sound, Pause Media, Open at Login and Quit. Open at Login stays off until you turn it on. Opening the app shows its window. Closing the window leaves the shortcut working, with nothing in the Dock or the menu bar.
+The window has Check for Updates; Model and Language (Automatic or one language); Recording and Cancel Recording; Open at Login; Pause Media and Mute Sound; Paste Text; Transcribe File with Choose File…; Quit. Open at Login stays off until it is turned on. Opening the app shows its window. Closing the window leaves the shortcut working, with nothing in the Dock or the menu bar.
 
 ## For advanced users and language models
 
 Recognition runs on the Mac with the open model you choose: Whisper, Parakeet or Qwen. The network is used only to download that model and to check for updates. A recording lives in memory only. No history, no logs, no account.
 
-Drop an audio or video file on the window and its text appears in a `.txt` beside it.
+Audio and video files: Choose File… in the window, a drop anywhere on the window, or Open With → STT in Finder. The text is saved beside the file as a `.txt` with the same name (`Interview.m4a` gives `Interview.txt`; an existing file is never overwritten, the new one is `Interview (2).txt`) and copied to the clipboard; it is not pasted. A small window shows the progress with Cancel, then the name of the `.txt`, which shows it in Finder when clicked. Several files go one after another; a dictation made meanwhile waits for the file.
 
 ### How it works
 
 - Engine: transcribe.cpp (MIT), one interface over Whisper, Parakeet and Qwen; each model is a single `.gguf` file.
 - Models download from the `handy-computer` repositories on Hugging Face at a fixed revision and are checked against a SHA-256 written in the code.
 - The microphone is recorded through `AVAudioEngine` into memory; nothing is written to disk.
-- Before recognition, silence is cut out and long speech is split at pauses into pieces of up to 30 s. Most models lose accuracy past 30-40 s in one run, and on silence Whisper invents text, such as «Субтитры сделал DimaTorzok», a line it picked up from subtitles.
-- Filler sounds (э-э, мм, uh, um and the like) are removed by a fixed pattern after recognition. Words are never changed.
+- Before recognition, silence is cut out and long speech is split at pauses into pieces of up to 30 s. Most models lose accuracy past 30-40 s in one run.
+- On silence and at the end of speech Whisper writes lines it learned from film subtitles, such as «Субтитры сделал DimaTorzok» or «Продолжение следует...». Such credit lines are removed when they close a piece of speech.
+- Whisper Turbo sometimes stops after a few words (a short «Vielen Dank.» for fifteen seconds of a speech) or loops one phrase. Such a piece is transcribed again without the prompt and then, if still short, at temperature 0.2, and the fuller text is kept. On European Parliament speeches this took German from 22.9 % to 16.1 % of wrong words and Dutch from 22.8 % to 12.4 %; nothing got worse.
+- Filler sounds are removed by a fixed pattern after recognition: э-э, ммм, хм, uh, hmm, äh, euh, yyy and the like, and um in English only (in German and Portuguese it is a word). Words are never changed.
 - The text is pasted into the app in front by a simulated Command-V, which is what Accessibility is for, and stays on the clipboard in case the paste misses.
 - macOS keeps Option-Command-Space for its own search, so STT catches it with an event tap at the head of the session, which also needs Accessibility.
 
@@ -64,6 +66,14 @@ Word error rate through this app’s pipeline, on 40 real sentences per language
 | Parakeet | 3.35 % | 7.70 % | 6.59 % | 5.72 % | 60 to 90x |
 | Qwen | 3.61 % | no Ukrainian | 6.26 % | 4.64 % | about 12x |
 
+Other people’s spontaneous speech: speeches in the European Parliament (VoxPopuli), one utterance from each of 40 speakers per language, through this app’s pipeline. Word error rate:
+
+| Model | Czech | German | English | Spanish | French | Italian | Dutch | Polish |
+|---|---|---|---|---|---|---|---|---|
+| Parakeet | 10.8 % | 9.6 % | 8.3 % | 6.5 % | 7.6 % | 12.1 % | 9.6 % | 9.1 % |
+| Qwen | 21.6 % | 11.5 % | 9.9 % | 6.9 % | 9.0 % | 16.2 % | 11.3 % | 15.1 % |
+| Whisper | 18.0 % | 16.1 % | 12.0 % | 6.7 % | 9.8 % | 20.6 % | 12.4 % | 14.7 % |
+
 ### Questions
 
 #### Does my voice leave the Mac?
@@ -80,7 +90,7 @@ Microphone to record. Accessibility to paste the text and to catch Option-Comman
 
 #### Which model should I choose?
 
-Whisper has the most languages and lets you choose one. Parakeet is the fastest and always detects the language by itself. Qwen is the largest and the slowest, and has no Ukrainian. Each can be tried and deleted.
+Parakeet made the fewest errors on other people’s speech in all eight languages measured and is the fastest; it always detects the language by itself. Whisper has the most languages and lets one be chosen. Qwen is the largest and the slowest and has no Ukrainian: it writes Ukrainian speech as a mixture of Russian and Polish words. Each can be tried and deleted.
 
 #### Does it remove filler sounds?
 
@@ -88,7 +98,7 @@ Filler sounds such as “uh” are removed. Words are never touched. No AI rewri
 
 #### Can it transcribe audio or video files?
 
-Yes. Drop a file on the window and its text appears in a `.txt` beside it. It runs on the chosen model, offline.
+Yes, offline, with the chosen model: Choose File… in the window, a drop on the window, or Open With → STT in Finder. The text is saved beside the file as a `.txt` with the same name and copied to the clipboard.
 
 #### Can I add my own words or names?
 
@@ -118,20 +128,20 @@ With the app quit, `/Applications/STT.app/Contents/MacOS/STT --file some.wav` pr
 
 ### Details
 
-- Version: 0.2.
+- Version: 0.3.
 - Bundle ID: `com.geragaraza.stt`.
-- Download: `STT.dmg`, 3.3 MB.
+- Download: `STT.dmg`, 4.2 MB.
 - Models: downloaded separately, 740 to 2,185 MB each.
 - Requires: Apple silicon, macOS 13 or later.
 - Permissions: Microphone, Accessibility. Network: to download a model and to check for updates.
 - Signed with a Developer ID and notarized by Apple.
 - Interface: English, Ukrainian, Russian, from the language of macOS.
-- Code: Swift with AppKit, about 1,600 lines, the transcribe.cpp framework, and Sparkle for updates.
+- Code: Swift with AppKit, about 2,100 lines, the transcribe.cpp framework, and Sparkle for updates.
 - License: MIT.
 
 ### Build
 
-Needs Xcode Command Line Tools. The first build downloads the transcribe.cpp and Sparkle frameworks from their releases.
+Needs Xcode 26 or later in Applications: the Swift compiler, and actool with Icon Composer for the light and dark icon. The first build downloads the transcribe.cpp and Sparkle frameworks from their releases.
 
     ./build
 

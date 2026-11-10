@@ -17,6 +17,7 @@
 import AppKit
 import AVFoundation
 import Carbon.HIToolbox
+import UniformTypeIdentifiers
 
 // MARK: models
 
@@ -159,19 +160,25 @@ func startKeyTap(_ handler: @escaping (Int, Int, Bool, Bool) -> Bool) -> Bool {
         for m in models { try? FileManager.default.removeItem(at: m.path.appendingPathExtension("part")) }
         window = AppWindow(name: "STT", github: "https://github.com/geragarazagh/stt",
                            defaultShortcut: Shortcut(key: kVK_Space, mods: cmdKey | optionKey),
-                           defaultCancel: Shortcut(key: kVK_Escape, mods: cmdKey), extra: settingsRows(),
+                           defaultCancel: Shortcut(key: kVK_Escape, mods: cmdKey), above: chooserRows(), extra: settingsRows(),
                            release: { [weak self] in self?.released() }) { [weak self] in self?.pressed() }
         if let content = window?.panel.contentView {
-            let drop = DropView(frame: content.bounds)
+            let drop = WindowDrop(frame: content.bounds)
             drop.autoresizingMask = [.width, .height]
-            drop.registerForDraggedTypes([.fileURL])
-            drop.accepts = { [weak self] in self?.current != nil && self?.fileJob == nil }
+            drop.accepts = { [weak self] in self?.current != nil }
             drop.dropped = { [weak self] in self?.transcribeFiles($0) }
             content.addSubview(drop)
         }
         rebuildMenu()
         if let m = current { load(m) } else { window?.show() }
         if AXIsProcessTrusted() { tryTap() }
+        launched = true
+        // Opened by Finder with files: only the files window, unless there is no model to work with.
+        if !openedAtLaunch.isEmpty {
+            if current != nil { window?.panel.orderOut(nil) }
+            application(NSApp, open: openedAtLaunch)
+            openedAtLaunch = []
+        }
     }
 
     // One question at a time: two system dialogs at once land on top of each other.
@@ -251,15 +258,62 @@ func startKeyTap(_ handler: @escaping (Int, Int, Bool, Bool) -> Bool) -> Bool {
 
     // MARK: settings
 
+    // Model and language first: a shortcut means nothing without a model, and what is on offer depends on it.
+    func chooserRows() -> NSView {
+        // The pickers take the same column as the key buttons below them. The line under them shows a download.
+        let row = NSView(frame: NSRect(x: 0, y: 0, width: 340, height: 74))
+        func label(_ s: String, _ y: CGFloat) {
+            let l = NSTextField(labelWithString: s)
+            l.font = .systemFont(ofSize: 13)
+            l.frame = NSRect(x: 20, y: y, width: 136, height: 18)
+            row.addSubview(l)
+        }
+        label(L("Model"), 53)
+        picker.frame = NSRect(x: 340 - 20 - 160, y: 48, width: 160, height: 26)
+        picker.target = self; picker.action = #selector(picked)
+        picker.refusesFirstResponder = true
+        row.addSubview(picker)
+        label(L("Language"), 23)
+        languagePicker.frame = NSRect(x: 340 - 20 - 160, y: 18, width: 160, height: 26)
+        languagePicker.target = self; languagePicker.action = #selector(pickedLanguage)
+        languagePicker.refusesFirstResponder = true
+        row.addSubview(languagePicker)
+        note.font = .systemFont(ofSize: 11)
+        note.textColor = .secondaryLabelColor
+        note.alignment = .right
+        note.frame = NSRect(x: 20, y: 0, width: 300, height: 14)
+        row.addSubview(note)
+        stopDownload.title = L("Cancel")
+        stopDownload.bezelStyle = .rounded
+        stopDownload.controlSize = .small
+        stopDownload.font = .systemFont(ofSize: 11)
+        stopDownload.sizeToFit()
+        stopDownload.frame.origin = NSPoint(x: 20, y: 0)
+        stopDownload.target = self; stopDownload.action = #selector(cancelDownload)
+        stopDownload.refusesFirstResponder = true
+        stopDownload.isHidden = true
+        row.addSubview(stopDownload)
+        return row
+    }
+
+    // Below Open at Login, in groups with the window's own gap between groups (51 pt from the middle of a group's last row
+    // to the middle of the next one's first, as from Language to Recording; 30 pt between rows inside a group), his
+    // order 2026-11-10: Pause Media and Mute Sound together, since both act while recording; Paste Text alone, since it
+    // follows recognition; then the row that transcribes a file, an action and not a setting.
+    // Open at Login (window.swift) sits with its middle 18 pt above this view's top edge, so the rows count down from it.
     func settingsRows() -> NSView {
-        let row = NSView(frame: NSRect(x: 0, y: 0, width: 340, height: 92 + 3 * 30))
+        let gap: CGFloat = 51, step: CGFloat = 30
+        let pause = 18 - gap, mute = pause - step, paste = mute - gap, file = paste - gap   // middles, from the top edge
+        let height = -file + 14   // the file row's button is 28 tall and ends at the bottom edge
+        let row = NSView(frame: NSRect(x: 0, y: 0, width: 340, height: height))
         func label(_ s: String, _ y: CGFloat) {
             let l = NSTextField(labelWithString: s)
             l.font = .systemFont(ofSize: 13)
             l.frame = NSRect(x: 20, y: y, width: 240, height: 18)
             row.addSubview(l)
         }
-        func toggle(_ s: String, _ key: String, _ standard: Bool, _ y: CGFloat) {
+        func toggle(_ s: String, _ key: String, _ standard: Bool, _ middle: CGFloat) {
+            let y = height + middle - 10
             label(s, y + 1)
             let t = NSSwitch()
             t.controlSize = .small
@@ -271,36 +325,32 @@ func startKeyTap(_ handler: @escaping (Int, Int, Bool, Bool) -> Bool) -> Bool {
             t.refusesFirstResponder = true
             row.addSubview(t)
         }
-        toggle(L("Paste Text"), "paste", true, 66)
-        toggle(L("Mute Sound"), "mute", false, 36)
-        toggle(L("Pause Media"), "pauseMedia", false, 6)
-
-        label(L("Language"), 119)
-        languagePicker.frame = NSRect(x: 340 - 20 - 216, y: 114, width: 220, height: 26)
-        languagePicker.target = self; languagePicker.action = #selector(pickedLanguage)
-        languagePicker.refusesFirstResponder = true
-        row.addSubview(languagePicker)
-        label(L("Model"), 149)
-        picker.frame = NSRect(x: 340 - 20 - 216, y: 144, width: 220, height: 26)
-        picker.target = self; picker.action = #selector(picked)
-        picker.refusesFirstResponder = true
-        row.addSubview(picker)
-        note.font = .systemFont(ofSize: 11)
-        note.textColor = .secondaryLabelColor
-        note.alignment = .right
-        note.frame = NSRect(x: 20, y: 96, width: 300, height: 14)
-        row.addSubview(note)
-        stopDownload.title = L("Cancel")
-        stopDownload.bezelStyle = .rounded
-        stopDownload.controlSize = .small
-        stopDownload.font = .systemFont(ofSize: 11)
-        stopDownload.sizeToFit()
-        stopDownload.frame.origin = NSPoint(x: 20, y: 92)
-        stopDownload.target = self; stopDownload.action = #selector(cancelDownload)
-        stopDownload.refusesFirstResponder = true
-        stopDownload.isHidden = true
-        row.addSubview(stopDownload)
+        toggle(L("Pause Media"), "pauseMedia", false, pause)
+        toggle(L("Mute Sound"), "mute", false, mute)
+        toggle(L("Paste Text"), "paste", true, paste)
+        label(L("Transcribe File"), 5)
+        // A real push button in the column of the key buttons, their frame and style (his word 2026-11-10: a dashed
+        // «Drop Here» well didn't look clickable). It opens the system's file chooser at once.
+        chooseButton.title = L("Choose File…")
+        chooseButton.frame = NSRect(x: 340 - 20 - 160, y: 0, width: 160, height: 28)
+        chooseButton.bezelStyle = .rounded
+        chooseButton.target = self; chooseButton.action = #selector(chooseFiles)
+        chooseButton.refusesFirstResponder = true
+        row.addSubview(chooseButton)
         return row
+    }
+
+    // Cancelled, nothing else opens; chosen, the files window shows the work.
+    @objc func chooseFiles() {
+        guard current != nil, let main = window?.panel else { return }
+        let p = NSOpenPanel()
+        p.allowsMultipleSelection = true
+        p.canChooseDirectories = false
+        p.allowedContentTypes = [.audiovisualContent]
+        p.prompt = L("Transcribe")
+        p.beginSheetModal(for: main) { [weak self] r in
+            if r == .OK, !p.urls.isEmpty { self?.transcribeFiles(p.urls) }
+        }
     }
 
     @objc func switched(_ t: NSSwitch) {
@@ -313,6 +363,7 @@ func startKeyTap(_ handler: @escaping (Int, Int, Bool, Bool) -> Bool) -> Bool {
 
     // The list: each model with what a person needs to choose it. Then the folder, and the delete for the one in use.
     func rebuildMenu() {
+        chooseButton.isEnabled = current != nil   // with no model there is nothing to transcribe with
         picker.removeAllItems()
         let shown = downloading ?? current
         if shown == nil {
@@ -346,8 +397,6 @@ func startKeyTap(_ handler: @escaping (Int, Int, Bool, Bool) -> Bool) -> Bool {
         cell?.usesItemFromMenu = false
         cell?.menuItem = NSMenuItem(title: shown?.title ?? L("Choose a Model"), action: nil, keyEquivalent: "")
         rebuildLanguages()
-        note.placeholderAttributedString = current == nil ? nil : NSAttributedString(string: L("Drop audio or video here"),
-            attributes: [.font: NSFont.systemFont(ofSize: 11), .foregroundColor: NSColor.secondaryLabelColor])
     }
 
     // Automatic, then the languages of the model in use by name, in the language of the window. A choice the model can't
@@ -454,7 +503,6 @@ func startKeyTap(_ handler: @escaping (Int, Int, Bool, Bool) -> Bool) -> Bool {
     }
 
     @objc func cancelDownload() {
-        if let fileJob { fileJob.stop(); return }
         stopFetching()
         rebuildMenu()
     }
@@ -578,49 +626,92 @@ func startKeyTap(_ handler: @escaping (Int, Int, Bool, Bool) -> Bool) -> Bool {
         }
     }
 
-    // A dropped file: its text goes into a .txt beside it, Finder shows that file. Nothing touches the clipboard,
-    // and a dictation made meanwhile waits its turn on the engine's queue.
+    // Files, from the files window or Finder's Open With: each one's text goes into a .txt beside it, and all of it onto
+    // the clipboard, never pasted. A dictation made meanwhile waits its turn on the engine's queue. Files that arrive
+    // during a job join its queue.
     final class FileJob: @unchecked Sendable {
         private let lock = NSLock(); private var stopped = false
         func stop() { lock.lock(); stopped = true; lock.unlock() }
         var goOn: Bool { lock.lock(); defer { lock.unlock() }; return !stopped }
     }
     var fileJob: FileJob?
+    var fileQueue: [URL] = [], fileCount = 0, written: [URL] = [], texts: [String] = [], failures: [String] = []
+    lazy var files: FilesWindow = {
+        let w = FilesWindow()
+        w.hasModel = { [weak self] in self?.current != nil }
+        w.beside = { [weak self] in self?.window?.panel }
+        w.start = { [weak self] in self?.transcribeFiles($0) }
+        w.cancel = { [weak self] in self?.fileJob?.stop(); self?.fileQueue = [] }
+        return w
+    }()
+    var launched = false, openedAtLaunch: [URL] = []
+
+    let chooseButton = NSButton(title: "", target: nil, action: nil)
+
+    // Finder's Open With, also at launch: then it comes before applicationDidFinishLaunching, and the job waits for the
+    // model to be loaded first, since both go through the engine's one queue in order.
+    func application(_ a: NSApplication, open urls: [URL]) {
+        guard launched else { openedAtLaunch += urls; return }
+        files.show()
+        if current == nil { window?.show(); return }
+        transcribeFiles(urls)
+    }
 
     func transcribeFiles(_ urls: [URL]) {
-        guard fileJob == nil, downloading == nil, !urls.isEmpty else { return }
-        let job = FileJob()
+        guard current != nil, !urls.isEmpty else { return }
+        fileQueue += urls
+        fileCount += urls.count
+        files.show()
+        if fileJob == nil { written = []; texts = []; failures = []; nextFile(FileJob()) }
+    }
+
+    private func nextFile(_ job: FileJob) {
+        guard job.goOn, !fileQueue.isEmpty else { return filesDone() }
         fileJob = job
-        stopDownload.isHidden = false
-        let engine = self.engine, working = L("Transcribing…")
-        note.stringValue = working
+        let url = fileQueue.removeFirst(), n = fileCount - fileQueue.count, count = fileCount
+        let name = url.lastPathComponent
+        files.showWork(name, 0, n, count)
+        let engine = self.engine
         engine.queue.async {
-            var written: [URL] = [], failures: [String] = []
-            for (n, url) in urls.enumerated() where job.goOn {
-                do {
-                    let pcm = try readMedia(url)
-                    let text = try engine.transcribe(pcm) { done in
-                        let share = (Double(n) + done) / Double(urls.count)
-                        DispatchQueue.main.async { self.note.stringValue = "\(working) \(Int(share * 100))%" }
-                        return job.goOn
-                    }
-                    if text.isEmpty { failures.append("\(url.lastPathComponent): \(L("No speech found"))"); continue }
-                    written.append(try saveBeside(url, text))
-                } catch Failure.stopped {
-                } catch Failure.noSound {
-                    failures.append("\(url.lastPathComponent): \(L("Can’t read sound from this file"))")
-                } catch {
-                    failures.append("\(url.lastPathComponent): \(error.localizedDescription)")
-                }
-            }
+            var result: Result<String, Error>
+            do {
+                let pcm = try readMedia(url)
+                result = .success(try engine.transcribe(pcm) { done in
+                    DispatchQueue.main.async { if job.goOn { self.files.showWork(name, done, n, count) } }
+                    return job.goOn
+                })
+            } catch { result = .failure(error) }
             DispatchQueue.main.async {
-                self.fileJob = nil
-                self.note.stringValue = ""
-                self.stopDownload.isHidden = true
-                if !written.isEmpty { NSWorkspace.shared.activateFileViewerSelecting(written) }
-                if !failures.isEmpty { report(L("Transcription failed"), failures.joined(separator: "\n")) }
+                switch result {
+                case .success(let text) where text.isEmpty: self.failures.append("\(name): \(L("No speech found"))")
+                case .success(let text):
+                    self.texts.append(text)
+                    do { self.written.append(try saveBeside(url, text)) } catch {
+                        self.failures.append("\(name): \(error.localizedDescription) \(L("The text is on the clipboard."))")
+                    }
+                case .failure(Failure.stopped): break
+                case .failure(Failure.noSound): self.failures.append("\(name): \(L("Can’t read sound from this file"))")
+                case .failure(let error): self.failures.append("\(name): \(error.localizedDescription)")
+                }
+                self.nextFile(job)
             }
         }
+    }
+
+    private func filesDone() {
+        let stopped = fileJob?.goOn == false
+        fileJob = nil; fileQueue = []; fileCount = 0
+        // The clipboard gets the text even when the .txt could not be written, so nothing is lost.
+        if !texts.isEmpty {
+            pasteboard.clearContents()
+            pasteboard.setString(texts.joined(separator: "\n\n"), forType: .string)
+        }
+        if !written.isEmpty {
+            files.showDone(written)
+        } else {
+            files.showIdle()
+        }
+        if !failures.isEmpty && !stopped { report(L("Transcription failed"), failures.joined(separator: "\n")) }
     }
 
     func deliver(_ text: String) {
@@ -707,19 +798,6 @@ func readMedia(_ url: URL) throws -> [Float] {
     }
     if reader.status == .failed { throw reader.error ?? Failure.noSound }
     return samples
-}
-
-// Takes files dropped anywhere on the window. It lies over everything and lets clicks through.
-final class DropView: NSView {
-    var accepts: () -> Bool = { false }
-    var dropped: ([URL]) -> Void = { _ in }
-    override func hitTest(_ point: NSPoint) -> NSView? { nil }
-    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation { accepts() ? .copy : [] }
-    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
-        let urls = sender.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
-        dropped(urls)
-        return !urls.isEmpty
-    }
 }
 
 @main struct Main {

@@ -98,6 +98,19 @@ func report(_ title: String, _ details: String) {
     }
 }
 
+// The app's own icon, as Finder shows it now: on macOS 26+ the icon follows the theme (Assets.car), so it is fetched
+// again whenever the window's appearance changes; NSApp.applicationIconImage keeps the one from launch.
+final class AppIconView: NSImageView {
+    override func viewDidMoveToWindow() { super.viewDidMoveToWindow(); refresh() }
+    override func viewDidChangeEffectiveAppearance() { super.viewDidChangeEffectiveAppearance(); refresh() }
+    // NSWorkspace hands the icon at 32 pt and an image view only scales down, so it showed a quarter of the old size.
+    private func refresh() {
+        let icon = NSWorkspace.shared.icon(forFile: Bundle.main.bundlePath)
+        icon.size = bounds.size
+        image = icon
+    }
+}
+
 @MainActor final class AppWindow: NSObject, NSWindowDelegate {
     let name: String
     let github: String
@@ -107,7 +120,8 @@ func report(_ title: String, _ details: String) {
     var cancelKey: Shortcut? // a second recorded key, for an app that has something to cancel
     var recordingCancel = false
     var tapOwnsKeys = false  // an app with its own event tap hears macOS's keys too, so they are allowed
-    let extra: NSView?       // an app's own row, between Open at Login and the links
+    let extra: NSView?       // an app's own rows, between Open at Login and the links
+    let above: NSView?       // an app's own rows above the shortcuts (STT: model and language, the choices the rest depends on)
     var recording = false
     let panel: NSPanel
     let keyButton = NSButton(title: "", target: nil, action: nil)
@@ -115,8 +129,9 @@ func report(_ title: String, _ details: String) {
     let loginSwitch = NSSwitch()
     let status = NSTextField(labelWithString: "")
 
-    init(name: String, github: String, defaultShortcut: Shortcut, defaultCancel: Shortcut? = nil, extra: NSView? = nil, release: (() -> Void)? = nil, action: @escaping () -> Void) {
+    init(name: String, github: String, defaultShortcut: Shortcut, defaultCancel: Shortcut? = nil, above: NSView? = nil, extra: NSView? = nil, release: (() -> Void)? = nil, action: @escaping () -> Void) {
         self.extra = extra
+        self.above = above
         self.name = name
         self.github = github
         let id = Bundle.main.bundleIdentifier ?? ""
@@ -125,7 +140,7 @@ func report(_ title: String, _ details: String) {
         shortcut = d.object(forKey: "key") == nil ? defaultShortcut : Shortcut(key: d.integer(forKey: "key"), mods: d.integer(forKey: "mods"))
         cancelKey = d.object(forKey: "cancelKey") == nil ? defaultCancel : Shortcut(key: d.integer(forKey: "cancelKey"), mods: d.integer(forKey: "cancelMods"))
         // Non-activating: it takes the keys even when macOS declines to bring a background app forward.
-        panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 340, height: 306 + (defaultCancel == nil ? 0 : 34) + (extra?.frame.height ?? 0)), styleMask: [.titled, .closable, .nonactivatingPanel], backing: .buffered, defer: false)
+        panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 340, height: 306 + (defaultCancel == nil ? 0 : 34) + (extra?.frame.height ?? 0) + (above.map { $0.frame.height + 18 } ?? 0)), styleMask: [.titled, .closable, .nonactivatingPanel], backing: .buffered, defer: false)
         super.init()
 
         onHotKey = action
@@ -167,7 +182,9 @@ func report(_ title: String, _ details: String) {
         let W: CGFloat = 340, M: CGFloat = 20
         let up = extra?.frame.height ?? 0   // everything above the links moves up by the extra row
         let top = up + (cancelKey == nil ? 0 : 34)   // and everything above the shortcuts by the second one
+        let lift = above.map { $0.frame.height + 18 } ?? 0   // the header moves up by the rows above the shortcuts and a gap
         if let extra { extra.frame.origin = NSPoint(x: 0, y: 50); v.addSubview(extra) }
+        if let above { above.frame.origin = NSPoint(x: 0, y: 140 + top); v.addSubview(above) }
 
         func text(_ s: String, _ font: NSFont, _ color: NSColor, _ frame: NSRect, _ align: NSTextAlignment) -> NSTextField {
             let l = NSTextField(labelWithString: s)
@@ -176,19 +193,18 @@ func report(_ title: String, _ details: String) {
             return l
         }
 
-        let icon = NSImageView(frame: NSRect(x: (W - 64) / 2, y: 216 + top, width: 64, height: 64))
-        icon.image = NSApp.applicationIconImage
+        let icon = AppIconView(frame: NSRect(x: (W - 64) / 2, y: 216 + top + lift, width: 64, height: 64))
         v.addSubview(icon)
-        _ = text(name, .boldSystemFont(ofSize: 15), .labelColor, NSRect(x: M, y: 190 + top, width: W - 2 * M, height: 20), .center)
+        _ = text(name, .boldSystemFont(ofSize: 15), .labelColor, NSRect(x: M, y: 190 + top + lift, width: W - 2 * M, height: 20), .center)
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""
-        _ = text(version, .systemFont(ofSize: 11), .secondaryLabelColor, NSRect(x: M, y: 174 + top, width: W - 2 * M, height: 14), .center)
+        _ = text(version, .systemFont(ofSize: 11), .secondaryLabelColor, NSRect(x: M, y: 174 + top + lift, width: W - 2 * M, height: 14), .center)
         let updates = NSButton(title: L("Check for Updates…"), target: Updates.shared, action: #selector(Updates.check))
         updates.bezelStyle = .rounded
         updates.controlSize = .small
         updates.font = .systemFont(ofSize: 11)
         updates.refusesFirstResponder = true
         updates.sizeToFit()
-        updates.frame.origin = NSPoint(x: (W - updates.frame.width) / 2, y: 142 + top)
+        updates.frame.origin = NSPoint(x: (W - updates.frame.width) / 2, y: 142 + top + lift)
         v.addSubview(updates)
 
         func keyRow(_ label: String, _ button: NSButton, _ y: CGFloat, _ action: Selector) {

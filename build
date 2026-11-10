@@ -3,7 +3,7 @@
 set -e
 cd "${0:A:h}"
 # It changes per release, not per build.
-version=0.2 min=13.0 id=com.geragaraza.stt app=STT.app engine=0.4.1
+version=0.3 min=13.0 id=com.geragaraza.stt app=STT.app engine=0.4.1
 tmp=$(mktemp -d); trap 'rm -rf $tmp' EXIT
 rm -rf "$app" STT.zip
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources" "$app/Contents/Frameworks"
@@ -39,16 +39,43 @@ done
 
 swiftc -O -target arm64-apple-macos$min -parse-as-library -module-name STT -F vendor -framework CTranscribe -framework Sparkle \
   -Xlinker -rpath -Xlinker @executable_path/../Frameworks -lc++ -lz -framework Accelerate -framework Metal -framework MetalKit \
-  -o "$app/Contents/MacOS/STT" entry.swift engine.swift window.swift media.swift download.swift updates.swift vendor/*.swift 2>&1 | grep -E "error" || true
+  -o "$app/Contents/MacOS/STT" entry.swift engine.swift window.swift files.swift media.swift download.swift updates.swift vendor/*.swift 2>&1 | grep -E "error" || true
 [ -x "$app/Contents/MacOS/STT" ]
 
+# App icon, Apple's way since 2026-11-09: an Icon Composer document (the picture from icon.swift, the plate is the
+# system's own fill) compiled by Xcode's actool into Assets.car, which macOS 26+ shows light, dark, clear or tinted with
+# the theme, and AppIcon.icns, Apple's light rendition, which macOS 13-15 show. Needs full Xcode; the Command Line Tools
+# stay the default developer dir, so swiftc above is the tested one. docs/icon.png and docs/icon-dark.png (README) are
+# Icon Composer's own renders at Apple's macOS size: 824 of 1024. Glass, group shadow and translucency are off: with
+# Icon Composer's defaults the picture turned to glass (the white wave and the OCR digits vanished in the dark rendition).
+# The light picture sits in the specializations list as the entry without an appearance: given as plain image-name,
+# Icon Composer ignored the dark entry and darkened the light picture itself (measured with ictool, 2026-11-09).
+xc=/Applications/Xcode.app/Contents
 swiftc -O -o $tmp/icon icon.swift
-mkdir -p $tmp/AppIcon.iconset docs
-$tmp/icon $tmp/AppIcon.iconset docs/wave.svg   # every size is drawn on its own pixel grid, not scaled down
-iconutil -c icns $tmp/AppIcon.iconset -o "$app/Contents/Resources/AppIcon.icns"
+mkdir -p $tmp/AppIcon.icon/Assets docs
+$tmp/icon $tmp/AppIcon.icon/Assets docs/wave.svg   # and the wave for the site
+cat > $tmp/AppIcon.icon/icon.json <<'JSON'
+{
+  "fill" : "system-light",
+  "fill-specializations" : [ { "appearance" : "dark", "value" : "system-dark" } ],
+  "groups" : [ { "layers" : [ { "name" : "picture", "glass" : false,
+    "image-name-specializations" : [ { "value" : "light.png" }, { "appearance" : "dark", "value" : "dark.png" } ] } ],
+    "shadow" : { "kind" : "none", "opacity" : 0.5 }, "translucency" : { "enabled" : false, "value" : 0.5 } } ],
+  "supported-platforms" : { "squares" : [ "macOS" ] }
+}
+JSON
+DEVELOPER_DIR=$xc/Developer xcrun actool $tmp/AppIcon.icon --compile "$PWD/$app/Contents/Resources" --platform macosx \
+  --minimum-deployment-target $min --app-icon AppIcon --output-partial-info-plist $tmp/icon.plist --target-device mac >/dev/null
+for r in Default Dark; do
+  "$xc/Applications/Icon Composer.app/Contents/Executables/ictool" $tmp/AppIcon.icon --export-image --output-file $tmp/$r.png \
+    --platform macOS --rendition $r --width 206 --height 206 --scale 1 >/dev/null
+  sips -p 256 256 $tmp/$r.png --out docs/icon${${r:#Default}:+-dark}.png >/dev/null
+done
 cp vendor/silero-vad-v6.2-F32.gguf LICENSE THIRD-PARTY-LICENSES.md "$app/Contents/Resources/"
 clang -O2 -target arm64-apple-macos$min -dynamiclib -o "$app/Contents/Resources/playing.dylib" playing.c
 
+# Document types: audio and video, so Finder lists STT under Open With. Alternate: a second opener, never the default
+# one for a type another app owns, so a double click keeps opening the player people chose.
 cat > "$app/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -60,6 +87,7 @@ cat > "$app/Contents/Info.plist" <<PLIST
 <key>CFBundleDevelopmentRegion</key><string>en</string>
 <key>CFBundleLocalizations</key><array><string>en</string><string>ru</string><string>uk</string></array>
 <key>CFBundleIconFile</key><string>AppIcon</string>
+<key>CFBundleIconName</key><string>AppIcon</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleShortVersionString</key><string>$version</string>
 <key>CFBundleVersion</key><string>$version</string>
@@ -72,6 +100,12 @@ cat > "$app/Contents/Info.plist" <<PLIST
 <key>SUVerifyUpdateBeforeExtraction</key><true/>
 <key>SUEnableAutomaticChecks</key><true/>
 <key>SUAllowsAutomaticUpdates</key><false/>
+<key>CFBundleDocumentTypes</key><array><dict>
+  <key>CFBundleTypeName</key><string>Audio or Video</string>
+  <key>CFBundleTypeRole</key><string>Viewer</string>
+  <key>LSHandlerRank</key><string>Alternate</string>
+  <key>LSItemContentTypes</key><array><string>public.audio</string><string>public.movie</string></array>
+</dict></array>
 <key>NSMicrophoneUsageDescription</key><string>Speech is turned into text on this Mac and goes nowhere.</string>
 </dict></plist>
 PLIST
