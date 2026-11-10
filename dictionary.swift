@@ -8,13 +8,48 @@
 
 import AppKit
 
-// Names many people say and models spell wrongly unless they have seen them, each measured (Claude 0 → 16 of 16 on the
-// author's dictations, nothing invented elsewhere). Order is priority: when the prompt is full the last ones stay out, and a
-// person's own words go before these. Not longer on purpose: 42 names (Homebrew, Cloudflare, Spotify… added) made the
-// author's dictations worse, 78 → 75 % of names right, since every extra name in Whisper's prompt weakens the others; a person's
-// own words are what moves the number (Handy 7 → 13 of 13, GigaAM 0 → 4 of 4).
-let presetWords = ["ChatGPT", "Claude", "Claude Code", "Anthropic", "OpenAI", "Gemini", "Google", "YouTube", "TikTok",
-                   "Instagram", "Telegram", "WhatsApp", "Facebook", "GitHub", "iPhone", "macOS"]
+// Names many people say and models spell wrongly unless they have seen them (0.5, research of 2026-11-10 night): the 16 of
+// 0.4 without iPhone and WhatsApp, which Whisper writes right alone, plus ten. Order is priority: when the prompt is full
+// the last ones stay out, and a person's own words go before these. 24, not more: on the author's 199 dictations 16 and 24
+// both gave 78 / 77 % of names right without pairs, 92 % with them; on other voices 24 did better (Ukrainian and Russian
+// 54 → 59 % of the listed names) and changed no other word beyond run-to-run noise on 2 300 public clips; 32 gained
+// nothing, and 42 (0.4's measurement) made it worse, since every extra name in Whisper's prompt weakens the others.
+let presetWords = [
+    "ChatGPT", "Claude", "Claude Code", "Anthropic", "OpenAI", "Gemini", "Google", "YouTube", "TikTok", "Instagram", "Telegram", "Facebook", "GitHub", "macOS", "MacBook", "Viber", "Zoom", "Perplexity", "DeepSeek", "Copilot", "Cursor", "Python", "ElevenLabs", "NotebookLM"]
+
+// Replacements built in (0.5): how a model writes a name heard in Russian or Ukrainian, and the name. 104 pairs for 69
+// names, each heard form checked against the author's speech and public sets so that no ordinary word is one («тему» is
+// Temu 27 times in his speech, so it is not here; nor сигнал, зум, хром, курсор, сафари, сора…). With them Whisper
+// wrote 92 % of the names in his dictations right instead of 78 %, Parakeet 72 % instead of 41 %. The person's table
+// starts with them and can drop or restore them, as the words.
+let presetPairs: [(heard: String, written: String)] = [
+    ("клод", "Claude"), ("клод код", "Claude Code"), ("чат джипити", "ChatGPT"), ("чат джи пи ти", "ChatGPT"),
+    ("чатджипити", "ChatGPT"), ("антропик", "Anthropic"), ("антропік", "Anthropic"), ("опен эй ай", "OpenAI"),
+    ("опен ей ай", "OpenAI"), ("джемини", "Gemini"), ("джеміні", "Gemini"), ("гугл", "Google"),
+    ("гмейл", "Gmail"), ("джимейл", "Gmail"), ("ютуб", "YouTube"), ("тикток", "TikTok"),
+    ("тік ток", "TikTok"), ("тікток", "TikTok"), ("тик ток", "TikTok"), ("инстаграм", "Instagram"),
+    ("інстаграм", "Instagram"), ("телеграм", "Telegram"), ("ватсап", "WhatsApp"), ("вотсап", "WhatsApp"),
+    ("вацап", "WhatsApp"), ("фейсбук", "Facebook"), ("гитхаб", "GitHub"), ("гітхаб", "GitHub"),
+    ("айфон", "iPhone"), ("айпад", "iPad"), ("макбук", "MacBook"), ("айклауд", "iCloud"),
+    ("дипсик", "DeepSeek"), ("діпсік", "DeepSeek"), ("перплексити", "Perplexity"), ("перплексіті", "Perplexity"),
+    ("миджорни", "Midjourney"), ("міджорні", "Midjourney"), ("вайбер", "Viber"), ("дискорд", "Discord"),
+    ("діскорд", "Discord"), ("реддит", "Reddit"), ("редит", "Reddit"), ("реддіт", "Reddit"),
+    ("пинтерест", "Pinterest"), ("пінтерест", "Pinterest"), ("линкедин", "LinkedIn"), ("лінкедін", "LinkedIn"),
+    ("нетфликс", "Netflix"), ("нетфлікс", "Netflix"), ("спотифай", "Spotify"), ("спотіфай", "Spotify"),
+    ("ноушн", "Notion"), ("фигма", "Figma"), ("фігма", "Figma"), ("дропбокс", "Dropbox"),
+    ("пейпал", "PayPal"), ("пэйпал", "PayPal"), ("бинанс", "Binance"), ("бінанс", "Binance"),
+    ("алиэкспресс", "AliExpress"), ("аліекспрес", "AliExpress"), ("виндовс", "Windows"), ("віндовс", "Windows"),
+    ("эксель", "Excel"), ("ексель", "Excel"), ("пауэрпоинт", "PowerPoint"), ("пауерпоінт", "PowerPoint"),
+    ("аутлук", "Outlook"), ("майкрософт", "Microsoft"), ("андроид", "Android"), ("андроїд", "Android"),
+    ("линукс", "Linux"), ("лінукс", "Linux"), ("пайтон", "Python"), ("докер", "Docker"),
+    ("хоумбрю", "Homebrew"), ("клаудфлэр", "Cloudflare"), ("клаудфлер", "Cloudflare"), ("маркдаун", "Markdown"),
+    ("слак", "Slack"), ("тимс", "Teams"), ("грок", "Grok"), ("копайлот", "Copilot"),
+    ("мистраль", "Mistral"), ("тредс", "Threads"), ("твич", "Twitch"), ("амазон", "Amazon"),
+    ("фейстайм", "FaceTime"), ("снэпчат", "Snapchat"), ("снепчат", "Snapchat"), ("трелло", "Trello"),
+    ("джира", "Jira"), ("глово", "Glovo"), ("револют", "Revolut"), ("самсунг", "Samsung"),
+    ("сяоми", "Xiaomi"), ("вайлдберриз", "Wildberries"), ("гугл докс", "Google Docs"), ("гугл драйв", "Google Drive"),
+    ("гугл мапс", "Google Maps"), ("гугл мит", "Google Meet"), ("гугл міт", "Google Meet"), ("чат gpt", "ChatGPT"),
+]
 
 // Stored as plain arrays under keys meant to stay as they are: STT for iPhone is to share the dictionary through iCloud
 // both ways (the author's wish, 2026-11-10). The same three keys can go into NSUbiquitousKeyValueStore as they are; «changed»
@@ -34,14 +69,27 @@ let presetWords = ["ChatGPT", "Claude", "Claude Code", "Anthropic", "OpenAI", "G
         }
     }
 
+    // Never edited: the built-in pairs. Edited: exactly the rows the person left.
     static var replacements: [(heard: String, written: String)] {
-        get { (UserDefaults.standard.array(forKey: replacementsKey) as? [[String]] ?? []).compactMap { $0.count == 2 ? ($0[0], $0[1]) : nil } }
+        get {
+            guard let stored = UserDefaults.standard.array(forKey: replacementsKey) as? [[String]] else { return presetPairs }
+            return stored.compactMap { $0.count == 2 ? ($0[0], $0[1]) : nil }
+        }
         set {
             let v = newValue.map { [$0.heard, $0.written] }
-            guard v != replacements.map({ [$0.heard, $0.written] }) else { return }
+            let stored = UserDefaults.standard.array(forKey: replacementsKey) != nil
+            guard v != replacements.map({ [$0.heard, $0.written] }) || !stored && v != presetPairs.map({ [$0.heard, $0.written] }) else { return }
             UserDefaults.standard.set(v, forKey: replacementsKey); changed()
         }
     }
+
+    static var missingPairs: [(heard: String, written: String)] {
+        let have = Set(replacements.map { $0.heard.lowercased() })
+        return presetPairs.filter { !have.contains($0.heard.lowercased()) }
+    }
+
+    // The built-in pairs that were removed come back at the end; the person's rows stay as they are.
+    static func restorePairs() { replacements = replacements + missingPairs }
 
     static var missingPreset: [String] {
         let have = Set(words.map { $0.lowercased() })
@@ -93,6 +141,7 @@ func replace(_ text: String, _ pairs: [(heard: String, written: String)]) -> Str
     let note = NSTextField(wrappingLabelWithString: "")
     let table = NSTableView()
     let plusMinus = NSSegmentedControl()
+    let restorePairs = NSButton(title: "", target: nil, action: nil)
     var rows: [[String]] = []
     var beside: (() -> NSWindow?)?
     var takesWords: (() -> Bool)?   // false for a model that ignores the list (Parakeet)
@@ -168,6 +217,14 @@ func replace(_ text: String, _ pairs: [(heard: String, written: String)]) -> Str
         plusMinus.target = self; plusMinus.action = #selector(plusMinusClicked)
         plusMinus.frame = NSRect(x: M, y: 24, width: 48, height: 24)
         v.addSubview(plusMinus)
+        // The built-in pairs that were removed, back: the same small button as under the words, level with + and −.
+        restorePairs.title = L("Restore")
+        restorePairs.bezelStyle = .rounded
+        restorePairs.controlSize = .small
+        restorePairs.target = self; restorePairs.action = #selector(restoreBuiltInPairs)
+        restorePairs.sizeToFit()
+        restorePairs.frame.origin = NSPoint(x: W - M - restorePairs.frame.width, y: 24 + (24 - restorePairs.frame.height) / 2)
+        v.addSubview(restorePairs)
     }
 
     // The field grows with its tags and the scroll view around it scrolls; a fixed field hid the words past its end.
@@ -213,6 +270,7 @@ func replace(_ text: String, _ pairs: [(heard: String, written: String)]) -> Str
 
     func refresh() {
         restore.isEnabled = !Words.missingPreset.isEmpty
+        restorePairs.isEnabled = !Words.missingPairs.isEmpty
         note.stringValue = takesWords?() == false ? L("Parakeet doesn’t take a word list: only replacements work with it.") : ""
     }
 
@@ -246,6 +304,15 @@ func replace(_ text: String, _ pairs: [(heard: String, written: String)]) -> Str
         refresh()
     }
 
+    @objc func restoreBuiltInPairs() {
+        panel.makeFirstResponder(nil)
+        saveRows()
+        Words.restorePairs()
+        rows = Words.replacements.map { [$0.heard, $0.written] }
+        table.reloadData()
+        refresh()
+    }
+
     @objc func plusMinusClicked() {
         if plusMinus.selectedSegment == 0 {
             panel.makeFirstResponder(nil)
@@ -263,6 +330,7 @@ func replace(_ text: String, _ pairs: [(heard: String, written: String)]) -> Str
     func saveRows() {
         Words.replacements = rows.map { ($0[0].trimmingCharacters(in: .whitespaces), $0[1].trimmingCharacters(in: .whitespaces)) }
             .filter { !$0.0.isEmpty && !$0.1.isEmpty }
+        refresh()
     }
 
     func numberOfRows(in t: NSTableView) -> Int { rows.count }

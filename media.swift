@@ -72,6 +72,9 @@ final class Media {
         p.executableURL = URL(fileURLWithPath: "/usr/bin/perl")
         p.arguments = ["-e", #"use DynaLoader; my $l = DynaLoader::dl_load_file($ARGV[0], 0) or exit 3; my $s = DynaLoader::dl_find_symbol($l, "stt_playing") or exit 3; DynaLoader::dl_install_xsub("main::p", $s); main::p();"#,
                        Bundle.main.path(forResource: "playing", ofType: "dylib") ?? ""]
+        // An empty environment: perl runs code named by PERL5OPT and PERL5LIB, and its child would act with STT's
+        // Microphone and Accessibility grants (security audit 2026-11-10). The script needs no variable.
+        p.environment = [:]
         p.standardError = FileHandle.nullDevice
         do {
             try p.run()

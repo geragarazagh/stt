@@ -67,3 +67,16 @@
 "Parakeet doesn’t take a word list: only replacements work with it." = "Parakeet не берёт список слов: с ним работают только замены.";
 "A password field is active" = "Открыто поле пароля";
 "The text was not pasted or copied." = "Текст не вставлен и не скопирован.";
+"Save Subtitles (.srt)" = "Сохранять субтитры (.srt)";
+"Start Recording" = "Начать запись";
+"Stop Recording" = "Остановить запись";
+"Starts a recording, as the key of STT does." = "Начинает запись, как клавиша STT.";
+"Stops the recording and gives its text, which is also pasted as by the key of STT." = "Останавливает запись и отдаёт её текст; он также вставляется, как по клавише STT.";
+"Turns speech in an audio or video file into text." = "Превращает речь из аудио- или видеофайла в текст.";
+"File" = "Файл";
+"STT is not ready yet." = "Приложение STT ещё не готово.";
+"No microphone is connected." = "Микрофон не подключён.";
+"Asked by %@." = "Просит %@.";
+"Transcribe “%@”?" = "Распознать «%@»?";
+"Transcribe %d files?" = "Распознать файлы (%d)?";
+"another program" = "другая программа";

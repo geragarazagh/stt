@@ -3,14 +3,18 @@
 set -e
 cd "${0:A:h}"
 # It changes per release, not per build.
-version=0.4 min=13.0 id=com.geragaraza.stt app=STT.app engine=0.4.1
+version=0.5 min=13.0 id=com.geragaraza.stt app=STT.app engine=0.4.1
 tmp=$(mktemp -d); trap 'rm -rf $tmp' EXIT
 rm -rf "$app" STT.zip
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources" "$app/Contents/Frameworks"
 
 # The engine's prebuilt framework, from its release. vendor/*.swift are its Swift bindings at the same tag.
+# Checked against a pinned checksum, like Sparkle below: the release is not immutable and carries no signature
+# (security audit 2026-11-10), and the bytes get signed with our Developer ID. Change engine_sha with engine.
+engine_sha=fb5646e564036a6c49659e3efcf72eb567af20da31b8569045c9a08181d35126
 if [ ! -d vendor/CTranscribe.framework ]; then
   curl -fsSL -o $tmp/x.zip https://github.com/handy-computer/transcribe.cpp/releases/download/v$engine/TranscribeCpp.xcframework.zip
+  [ "$(shasum -a 256 $tmp/x.zip | cut -d' ' -f1)" = $engine_sha ] || { echo "CTranscribe checksum mismatch"; exit 1; }
   unzip -q $tmp/x.zip -d $tmp/x
   cp -R $tmp/x/TranscribeCpp.xcframework/macos-arm64_x86_64/CTranscribe.framework vendor/
 fi
@@ -37,10 +41,27 @@ for b in Sparkle Autoupdate Updater.app/Contents/MacOS/Updater; do
   lipo "$sp/Versions/B/$b" -thin arm64 -output $tmp/thin && cp $tmp/thin "$sp/Versions/B/$b"
 done
 
-swiftc -O -target arm64-apple-macos$min -parse-as-library -module-name STT -F vendor -framework CTranscribe -framework Sparkle \
+# Whole module, with the constant values Xcode's App Intents step reads (the Shortcuts actions of intents.swift).
+sources=(entry.swift engine.swift dictionary.swift window.swift files.swift media.swift download.swift updates.swift cli.swift intents.swift vendor/*.swift)
+echo '["AppIntent","EntityQuery","AppEntity","TransientEntity","AppEnum","AppShortcutProviding","AppShortcutsProvider","AnyResolverProviding","AppIntentsPackage","DynamicOptionsProvider"]' > $tmp/protocols.json
+swiftc -O -wmo -target arm64-apple-macos$min -parse-as-library -module-name STT -F vendor -framework CTranscribe -framework Sparkle \
+  -emit-const-values-path $tmp/STT.swiftconstvalues -Xfrontend -const-gather-protocols-file -Xfrontend $tmp/protocols.json \
   -Xlinker -rpath -Xlinker @executable_path/../Frameworks -lc++ -lz -framework Accelerate -framework Metal -framework MetalKit \
-  -o "$app/Contents/MacOS/STT" entry.swift engine.swift dictionary.swift window.swift files.swift media.swift download.swift updates.swift vendor/*.swift 2>&1 | grep -E "error" || true
+  -o "$app/Contents/MacOS/STT" $sources 2>&1 | grep -E "error" || true
 [ -x "$app/Contents/MacOS/STT" ]
+
+# Shortcuts: Metadata.appintents in Resources, as Xcode writes it (needs full Xcode). Without it the actions exist in the
+# binary and Shortcuts never lists them.
+xd=/Applications/Xcode.app/Contents/Developer
+for f in $sources; do echo "$PWD/$f"; done > $tmp/sources.txt
+echo $tmp/STT.swiftconstvalues > $tmp/constvalues.txt
+DEVELOPER_DIR=$xd xcrun appintentsmetadataprocessor --output "$app/Contents/Resources" --toolchain-dir $xd/Toolchains/XcodeDefault.xctoolchain \
+  --module-name STT --sdk-root "$(DEVELOPER_DIR=$xd xcrun --sdk macosx --show-sdk-path)" \
+  --xcode-version "$(DEVELOPER_DIR=$xd xcodebuild -version | awk '/Build version/{print $3}')" --platform-family macOS \
+  --deployment-target $min --bundle-identifier $id --target-triple arm64-apple-macos$min --binary-file "$app/Contents/MacOS/STT" \
+  --source-file-list $tmp/sources.txt --swift-const-vals-list $tmp/constvalues.txt --force --compile-time-extraction \
+  --deployment-aware-processing --no-app-shortcuts-localization 2>&1 | grep -iE "error|warning" || true
+[ -f "$app/Contents/Resources/Metadata.appintents/extract.actionsdata" ]
 
 # App icon, Apple's way since 2026-11-09: an Icon Composer document (the picture from icon.swift, the plate is the
 # system's own fill) compiled by Xcode's actool into Assets.car, which macOS 26+ shows light, dark, clear or tinted with

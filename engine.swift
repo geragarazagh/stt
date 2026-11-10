@@ -98,10 +98,18 @@ final class Engine: @unchecked Sendable {
 
     // `shouldGoOn` is asked between pieces, for long files: it gets the share done and false stops the job.
     func transcribe(_ pcm: [Float], shouldGoOn: ((Double) -> Bool)? = nil) throws -> String {
+        try transcribeTimed(pcm, shouldGoOn: shouldGoOn).text
+    }
+
+    // The text, and the same speech as subtitle cues with times in the original sound (for the .srt beside a file). The
+    // cues come from the model's own segments, moved back from the piece (silence cut out) to the file's time; a model
+    // that gives no segment times gets one cue per piece.
+    func transcribeTimed(_ pcm: [Float], shouldGoOn: ((Double) -> Bool)? = nil) throws -> (text: String, cues: [Cue]) {
         guard let session else { throw Failure.noModel }
         var text = "", spoken: String? = nil   // the language of the last piece, for the fillers that are words elsewhere
+        var timed: [(start: Double, end: Double, text: String)] = []
         let all = try pieces(pcm)
-        for (i, piece) in all.enumerated() {
+        for (i, (piece, map)) in all.enumerated() {
             if let shouldGoOn, !shouldGoOn(Double(i) / Double(all.count)) { throw Failure.stopped }
             // People mostly stay in one language, so the last one is tried first and a second run happens only on a change.
             let hint = prompt(forced ?? language, after: text)
@@ -133,8 +141,30 @@ final class Engine: @unchecked Sendable {
                 t = first.lowercased() + t.dropFirst()
             }
             if !t.isEmpty { text += (text.isEmpty ? "" : " ") + t }
+            let segments = run.segments.filter { $0.t1Ms > $0.t0Ms && !$0.text.trimmingCharacters(in: .whitespaces).isEmpty }
+            if segments.isEmpty {
+                if !t.isEmpty, let first = map.first, let last = map.last {
+                    timed.append((Double(first.from) / 16000, Double(last.from + last.count) / 16000, t))
+                }
+            } else {
+                for g in segments {
+                    // ms to samples, kept inside the piece; a line break inside a cue would end it in the .srt
+                    let at = { (ms: Int64) in self.original(Int(min(max(ms, 0), Int64(piece.count / 16))) * 16, map) }
+                    timed.append((at(g.t0Ms), at(g.t1Ms), dropCredits(g.text.components(separatedBy: .newlines).joined(separator: " ").trimmingCharacters(in: .whitespaces))))
+                }
+            }
         }
-        return replace(clean(text, language: spoken), pairs)
+        let cues = timed.map { Cue(start: $0.start, end: max($0.end, $0.start + 0.5), text: replace(clean($0.text, language: spoken), pairs)) }
+            .filter { !$0.text.isEmpty }
+        return (replace(clean(text, language: spoken), pairs), cues)
+    }
+
+    // A sample of a piece back to the sample of the original sound it came from (a pause between two stretches maps to
+    // the end of the first).
+    private func original(_ sample: Int, _ map: [Stretch]) -> Double {
+        guard var best = map.first else { return 0 }
+        for m in map where m.at <= sample { best = m }
+        return Double(best.from + min(max(sample - best.at, 0), best.count)) / 16000
     }
 
     // Empty is not collapsed: over music or noise that got past the VAD an empty answer is the right one, and a run
@@ -150,20 +180,24 @@ final class Engine: @unchecked Sendable {
         repeats.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) != nil
     }
 
+    // A stretch of speech inside a piece: where it starts in the piece, where it came from in the sound, how long it is.
+    typealias Stretch = (at: Int, from: Int, count: Int)
+
     // Speech only, in pieces of at most about 30 s, cut at pauses. A pause inside a piece is kept up to 0.3 s.
-    private func pieces(_ pcm: [Float]) throws -> [[Float]] {
-        guard let vad else { return [pcm] }
+    private func pieces(_ pcm: [Float]) throws -> [([Float], [Stretch])] {
+        guard let vad else { return [(pcm, [(0, 0, pcm.count)])] }
         let rate = 16000, target = 30 * rate, gap = rate * 3 / 10
         let found = try vad.run(pcm, options: VadOptions(minSilenceMs: 300, speechPadMs: 120, maxSpeechMs: 30000)).segments
-        var out: [[Float]] = [], cur: [Float] = []
+        var out: [([Float], [Stretch])] = [], cur: [Float] = [], map: [Stretch] = []
         for s in found {
             let a = max(0, Int(s.startSample)), b = min(pcm.count, Int(s.endSample))
             guard b > a else { continue }
-            if !cur.isEmpty && cur.count + (b - a) > target { out.append(cur); cur = [] }
+            if !cur.isEmpty && cur.count + (b - a) > target { out.append((cur, map)); cur = []; map = [] }
             if !cur.isEmpty { cur += [Float](repeating: 0, count: gap) }
+            map.append((cur.count, a, b - a))
             cur += pcm[a..<b]
         }
-        if !cur.isEmpty { out.append(cur) }
+        if !cur.isEmpty { out.append((cur, map)) }
         return out
     }
 }
@@ -173,6 +207,19 @@ private extension Character {
 }
 
 enum Failure: Error { case noModel, stopped, noSound }
+
+// One subtitle: seconds from the start of the file, and its text.
+struct Cue { let start: Double, end: Double, text: String }
+
+// SubRip, the subtitle format every player and editor reads: a number, «00:01:02,500 --> 00:01:05,000», the text, a blank line.
+func srt(_ cues: [Cue]) -> String {
+    func time(_ t: Double) -> String {
+        let ms = Int((max(t, 0) * 1000).rounded())
+        return String(format: "%02d:%02d:%02d,%03d", ms / 3_600_000, ms / 60000 % 60, ms / 1000 % 60, ms % 1000)
+    }
+    return cues.enumerated().map { "\($0.offset + 1)\n\(time($0.element.start)) --> \(time($0.element.end))\n\($0.element.text)\n" }
+        .joined(separator: "\n")
+}
 
 private let repeats = try! NSRegularExpression(pattern: #"(?<!\w)((?:\w+[,.!?…]?\s+){0,4}\w+)(?:[,.!?…]?\s+\1(?!\w)){3,}"#,
                                                options: .caseInsensitive)
@@ -192,8 +239,14 @@ private let credits = try! NSRegularExpression(pattern: [
     #"|(?:^|(?<=[.!?…]\s))(?-i:Продолжение следует)[.!…]*\s*$"#,
 ].joined(), options: .caseInsensitive)
 
+// The series ending also comes in the middle of a piece, with its capital and its dots, after a comma, a space or a word:
+// «повторяем, да, Продолжение следует... Повтори круг» (3 times in the author's dictations, 2026-11-10). On 33 160 outputs
+// of every model and test set this catches those 3 and nothing else; a person writing the words has no capital or no dots.
+private let midCredit = try! NSRegularExpression(pattern: #"(?<=[,\s\p{L}])\s*Продолжение следует(?:\.\.\.|…)\s*"#)
+
 func dropCredits(_ piece: String) -> String {
-    var s = credits.stringByReplacingMatches(in: piece, range: NSRange(piece.startIndex..., in: piece), withTemplate: "")
+    let middle = midCredit.stringByReplacingMatches(in: piece, range: NSRange(piece.startIndex..., in: piece), withTemplate: " ")
+    var s = credits.stringByReplacingMatches(in: middle, range: NSRange(middle.startIndex..., in: middle), withTemplate: "")
         .trimmingCharacters(in: .whitespaces)
     // «...тренироваться, Субтитры сделал...»: the comma before the credit closed nothing; the speech ended there.
     if s.count < piece.count, let last = s.last, ",;:".contains(last) { s = s.dropLast() + "." }

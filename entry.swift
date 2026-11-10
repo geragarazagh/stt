@@ -1,8 +1,7 @@
 // STT, speech to text: a hot key starts recording, the same key stops it, and the text lands in the app in front.
 // Offline: the only network call is downloading a model the user chose. No logs, no history.
 //
-// Test the whole pipeline without microphone or clipboard (quit the app first, a hot key has one owner):
-//   STT.app/Contents/MacOS/STT --file some.wav [model file name]
+// Test the whole pipeline without microphone or clipboard: STT.app/Contents/MacOS/STT some.wav (the command line, cli.swift).
 //
 // Why it is built this way:
 // - Engine: transcribe.cpp (MIT, vendor/ and Contents/Frameworks), the one Handy runs on since 2026: one API over
@@ -69,14 +68,20 @@ final class Recorder {
     private var samples: [Float] = []
 
     func start() throws {
+        // A Mac with no microphone at all (a Mac mini or Studio with nothing plugged in): AVAudioEngine raises an exception
+        // for its input, which ended the app (found on a test machine with no sound input, 2026-11-10). So it is asked first.
+        let noInput = NSError(domain: "STT", code: 1, userInfo: [NSLocalizedDescriptionKey: L("No microphone is connected.")])
+        var device = AudioDeviceID(0), size = UInt32(MemoryLayout<AudioDeviceID>.size)
+        var a = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDefaultInputDevice, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+        guard AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &a, 0, nil, &size, &device) == noErr, device != kAudioObjectUnknown else { throw noInput }
         let engine = AVAudioEngine()
         let input = engine.inputNode
         if var other = notBluetooth(), let unit = input.audioUnit {
             AudioUnitSetProperty(unit, kAudioOutputUnitProperty_CurrentDevice, kAudioUnitScope_Global, 0, &other, UInt32(MemoryLayout<AudioDeviceID>.size))
         }
         let from = input.outputFormat(forBus: 0)
-        guard from.sampleRate > 0, let to = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16000, channels: 1, interleaved: false),
-              let converter = AVAudioConverter(from: from, to: to) else { throw NSError(domain: "No audio input", code: 1) }
+        guard from.sampleRate > 0, from.channelCount > 0, let to = AVAudioFormat(commonFormat: .pcmFormatFloat32, sampleRate: 16000, channels: 1, interleaved: false),
+              let converter = AVAudioConverter(from: from, to: to) else { throw noInput }
         samples = []
         input.installTap(onBus: 0, bufferSize: 2048, format: from) { [weak self] buffer, _ in
             let capacity = AVAudioFrameCount(Double(buffer.frameLength) * 16000 / from.sampleRate) + 16
@@ -166,6 +171,7 @@ func startKeyTap(_ handler: @escaping (Int, Int, Bool, Bool) -> Bool) -> Bool {
 @MainActor final class App: NSObject, NSApplicationDelegate {
     let pasteboard: NSPasteboard
     let engine = Engine()
+    let control = Control()
     let recorder = Recorder()
     let mute = Mute()
     let media = Media()
@@ -206,11 +212,18 @@ func startKeyTap(_ handler: @escaping (Int, Int, Bool, Bool) -> Bool) -> Bool {
         passWords()
         if let m = current { load(m) } else { window?.show() }
         if AXIsProcessTrusted() { tryTap() }
+        control.toggle = { [weak self] in
+            guard let self else { return "STT is not ready." }
+            if self.current == nil && !self.recording { return "No model: choose one in the STT window." }
+            DispatchQueue.main.async { self.pressed() }   // answered first: an alert it may raise would hold the answer back
+            return "ok"
+        }
+        control.start()
         launched = true
         // Opened by Finder with files: only the files window, unless there is no model to work with.
         if !openedAtLaunch.isEmpty {
             if current != nil { window?.panel.orderOut(nil) }
-            application(NSApp, open: openedAtLaunch)
+            openFiles(openedAtLaunch, from: launchSender)
             openedAtLaunch = []
         }
     }
@@ -285,6 +298,7 @@ func startKeyTap(_ handler: @escaping (Int, Int, Bool, Bool) -> Bool) -> Bool {
 
     func applicationWillTerminate(_ n: Notification) {
         if recording || stopping { _ = recorder.stop(); soundBack() }
+        control.stop()
         download?.cancel()
         for m in models { try? FileManager.default.removeItem(at: m.path.appendingPathExtension("part")) }
         engine.queue.sync { engine.release() }
@@ -333,11 +347,13 @@ func startKeyTap(_ handler: @escaping (Int, Int, Bool, Bool) -> Bool) -> Bool {
     // Below Open at Login, in groups with the window's own gap between groups (51 pt from the middle of a group's last row
     // to the middle of the next one's first, as from Language to Recording; 30 pt between rows inside a group), his
     // order 2026-11-10: Pause Media and Mute Sound together, since both act while recording; Paste Text alone, since it
-    // follows recognition; then the row that transcribes a file, an action and not a setting.
+    // follows recognition; then the row that transcribes a file, an action and not a setting, with its one switch under it
+    // (0.5: subtitles beside the text, a file's own option, so it sits in the file's group); the dictionary as a group of
+    // its own.
     // Open at Login (window.swift) sits with its middle 18 pt above this view's top edge, so the rows count down from it.
     func settingsRows() -> NSView {
         let gap: CGFloat = 51, step: CGFloat = 30
-        let pause = 18 - gap, mute = pause - step, paste = mute - gap, file = paste - gap, words = file - step - 4   // middles
+        let pause = 18 - gap, mute = pause - step, paste = mute - gap, file = paste - gap, subtitles = file - step - 2, words = subtitles - gap - 2   // middles
         let height = -words + 14   // the dictionary row's button is 28 tall and ends at the bottom edge
         let row = NSView(frame: NSRect(x: 0, y: 0, width: 340, height: height))
         func label(_ s: String, _ y: CGFloat) {
@@ -362,9 +378,10 @@ func startKeyTap(_ handler: @escaping (Int, Int, Bool, Bool) -> Bool) -> Bool {
         toggle(L("Pause Media"), "pauseMedia", false, pause)
         toggle(L("Mute Sound"), "mute", false, mute)
         toggle(L("Paste Text"), "paste", true, paste)
-        // Two actions, not settings, together at the bottom, 34 pt apart as two push buttons stacked (30 left them
-        // touching): a real push button each in the column of the key buttons, their frame and style (his word
-        // 2026-11-10: a dashed «Drop Here» well didn't look clickable).
+        toggle(L("Save Subtitles (.srt)"), "subtitles", false, subtitles)
+        // Two actions, not settings: a real push button each in the column of the key buttons, their frame and style (his
+        // word 2026-11-10: a dashed «Drop Here» well didn't look clickable). A push button is 28 tall against a switch's
+        // 20, so the rows next to one sit 2 pt further away than the plain steps.
         func action(_ s: String, _ b: NSButton, _ title: String, _ middle: CGFloat, _ selector: Selector) {
             let y = height + middle - 14
             label(s, y + 5)
@@ -633,7 +650,7 @@ func startKeyTap(_ handler: @escaping (Int, Int, Bool, Bool) -> Bool) -> Bool {
             pressedAt = Date()
         } catch {
             soundBack()
-            report(L("Recording failed"), "\(error)")
+            report(L("Recording failed"), (error as NSError).domain == "STT" ? error.localizedDescription : "\(error)")
         }
     }
 
@@ -676,9 +693,11 @@ func startKeyTap(_ handler: @escaping (Int, Int, Bool, Bool) -> Bool) -> Bool {
         engine.queue.async {
             do {
                 let text = try engine.transcribe(pcm)
-                DispatchQueue.main.async { self.deliver(text) }
+                // A Stop Recording action gets what the clipboard got: nothing while a password field is active.
+                DispatchQueue.main.async { self.handOut(self.deliver(text) ? text : "") }
             } catch {
                 DispatchQueue.main.async {
+                    self.handOut("")
                     let a = NSAlert()
                     a.messageText = L("Transcription failed")
                     a.informativeText = "\(error)"
@@ -694,6 +713,39 @@ func startKeyTap(_ handler: @escaping (Int, Int, Bool, Bool) -> Bool) -> Bool {
                     default: break
                     }
                 }
+            }
+        }
+    }
+
+    // MARK: Shortcuts (intents.swift)
+
+    // What a Stop Recording action waits for: the text of the recording it stopped.
+    var textWaiters: [(String) -> Void] = []
+    func handOut(_ text: String) { let w = textWaiters; textWaiters = []; for f in w { f(text) } }
+
+    // As a press of the key, when nothing is recording yet. nil: recording.
+    func startFromOutside() -> LocalizedStringResource? {
+        if recording || stopping { return nil }
+        guard current != nil else { return "No model chosen" }
+        guard AVCaptureDevice.authorizationStatus(for: .audio) == .authorized else { return "STT has no access to the microphone." }
+        pressed()
+        return recording ? nil : "Recording failed"
+    }
+
+    func stopFromOutside() async -> String {
+        guard recording || stopping else { return "" }
+        return await withCheckedContinuation { (c: CheckedContinuation<String, Never>) in
+            textWaiters.append { c.resume(returning: $0) }
+            if recording { finish() }
+        }
+    }
+
+    func transcribeForShortcut(_ url: URL) async -> Result<String, Error> {
+        guard current != nil else { return .failure(Failure.noModel) }
+        let engine = self.engine
+        return await withCheckedContinuation { (c: CheckedContinuation<Result<String, Error>, Never>) in
+            engine.queue.async {
+                do { c.resume(returning: .success(try engine.transcribe(try readMedia(url)))) } catch { c.resume(returning: .failure(error)) }
             }
         }
     }
@@ -716,14 +768,38 @@ func startKeyTap(_ handler: @escaping (Int, Int, Bool, Bool) -> Bool) -> Bool {
         w.cancel = { [weak self] in self?.fileJob?.stop(); self?.fileQueue = [] }
         return w
     }()
-    var launched = false, openedAtLaunch: [URL] = []
+    var launched = false, openedAtLaunch: [URL] = [], launchSender: (trusted: Bool, name: String) = (false, "")
 
     let chooseButton = NSButton(title: "", target: nil, action: nil)
 
     // Finder's Open With, also at launch: then it comes before applicationDidFinishLaunching, and the job waits for the
     // model to be loaded first, since both go through the engine's one queue in order.
     func application(_ a: NSApplication, open urls: [URL]) {
-        guard launched else { openedAtLaunch += urls; return }
+        let sender = openSender()
+        guard launched else { openedAtLaunch += urls; launchSender = sender; return }
+        openFiles(urls, from: sender)
+    }
+
+    // Who asked: Finder's Open With and a drop on the Dock icon are a person's own hand; anything else (another program
+    // through LaunchServices, `open -a STT` included) is asked about first, since the file's text then lands on the
+    // clipboard where that program can read it, and STT may be able to read a folder that program can't (security pass
+    // 2026-11-10). A sandboxed program is refused by macOS itself before STT hears anything (measured on 26.6).
+    func openSender() -> (trusted: Bool, name: String) {
+        guard let e = NSAppleEventManager.shared().currentAppleEvent,
+              let pid = e.attributeDescriptor(forKeyword: AEKeyword(keySenderPIDAttr))?.int32Value, pid > 0 else { return (false, L("another program")) }
+        let app = NSRunningApplication(processIdentifier: pid)
+        if let id = app?.bundleIdentifier, ["com.apple.finder", "com.apple.dock"].contains(id) { return (true, "") }
+        var name = [CChar](repeating: 0, count: 256)
+        // `open -a STT …` from a terminal has usually exited by now: then no name is left to give.
+        return (false, app?.localizedName ?? (proc_name(pid, &name, 256) > 0 ? String(cString: name) : L("another program")))
+    }
+
+    func openFiles(_ urls: [URL], from sender: (trusted: Bool, name: String)) {
+        if !sender.trusted, current != nil {
+            let title = urls.count == 1 ? String(format: L("Transcribe “%@”?"), urls[0].lastPathComponent) : String(format: L("Transcribe %d files?"), urls.count)
+            guard alert(title, String(format: L("Asked by %@."), sender.name), [L("Transcribe"), L("Cancel")])
+                == .alertFirstButtonReturn else { return }
+        }
         files.show()
         if current == nil { window?.show(); return }
         transcribeFiles(urls)
@@ -743,22 +819,31 @@ func startKeyTap(_ handler: @escaping (Int, Int, Bool, Bool) -> Bool) -> Bool {
         let url = fileQueue.removeFirst(), n = fileCount - fileQueue.count, count = fileCount
         let name = url.lastPathComponent
         files.showWork(name, 0, n, count)
-        let engine = self.engine
+        let engine = self.engine, subtitles = isOn("subtitles")
         engine.queue.async {
-            var result: Result<String, Error>
+            var result: Result<(text: String, cues: [Cue]), Error>
+            // The folder is opened now, before the file is read, and the texts go into exactly this folder later, even if
+            // its path is swapped for a link meanwhile (security pass 2026-11-10: a sender owning the folder could
+            // otherwise have STT create files where only STT may write).
+            let folder = open(url.deletingLastPathComponent().path, O_RDONLY | O_DIRECTORY | O_CLOEXEC), folderError = errno
             do {
                 let pcm = try readMedia(url)
-                result = .success(try engine.transcribe(pcm) { done in
+                result = .success(try engine.transcribeTimed(pcm) { done in
                     DispatchQueue.main.async { if job.goOn { self.files.showWork(name, done, n, count) } }
                     return job.goOn
                 })
             } catch { result = .failure(error) }
             DispatchQueue.main.async {
+                defer { if folder >= 0 { close(folder) } }
                 switch result {
-                case .success(let text) where text.isEmpty: self.failures.append("\(name): \(L("No speech found"))")
-                case .success(let text):
+                case .success(let r) where r.text.isEmpty: self.failures.append("\(name): \(L("No speech found"))")
+                case .success(let r):
+                    let text = r.text
                     self.texts.append(text)
-                    do { self.written.append(try saveBeside(url, text)) } catch {
+                    do {
+                        guard folder >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: folderError) ?? .EACCES) }
+                        self.written.append(try saveBeside(url, in: folder, text, subtitles: subtitles ? srt(r.cues) : nil))
+                    } catch {
                         self.failures.append("\(name): \(error.localizedDescription) \(L("The text is on the clipboard."))")
                     }
                 case .failure(Failure.stopped): break
@@ -789,25 +874,26 @@ func startKeyTap(_ handler: @escaping (Int, Int, Bool, Bool) -> Bool) -> Bool {
     // A password field is in front (macOS's Secure Input is on): the text is neither pasted nor left on the clipboard,
     // where any app could read it. The alert says so, since nothing else would show that the dictation went nowhere.
     // Some apps hold Secure Input for a while after their password field (a terminal's Secure Keyboard Entry too).
-    func deliver(_ text: String) {
-        guard !text.isEmpty else { return }
-        if pasteboard == .general, IsSecureEventInputEnabled() {
+    @discardableResult func deliver(_ text: String) -> Bool {
+        guard !text.isEmpty else { return false }
+        if IsSecureEventInputEnabled() {
             let a = NSAlert()
             a.messageText = L("A password field is active")
             a.informativeText = L("The text was not pasted or copied.")
             NSApp.activate(ignoringOtherApps: true)
             a.runModal()
-            return
+            return false
         }
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
-        guard pasteboard == .general, isOn("paste", true) else { return }
+        guard pasteboard == .general, isOn("paste", true) else { return true }
         guard AXIsProcessTrusted() else {
             settingsAlert(L("The text is on the clipboard. Pasting it needs Accessibility."), "Privacy_Accessibility")
-            return
+            return true
         }
         // 60 ms: an app reading the clipboard straight after the change can still see the old text.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.06) { Self.pressPaste() }
+        return true
     }
 
     static func pressPaste() {
@@ -851,13 +937,41 @@ func keyCode(of letter: String, in layout: TISInputSource? = nil) -> Int {
     return kVK_ANSI_V
 }
 
-// name.mp4 gives name.txt; an existing file is never overwritten.
-func saveBeside(_ source: URL, _ text: String) throws -> URL {
-    let folder = source.deletingLastPathComponent(), name = source.deletingPathExtension().lastPathComponent
-    var out = folder.appendingPathComponent(name + ".txt"), n = 2
-    while FileManager.default.fileExists(atPath: out.path) { out = folder.appendingPathComponent("\(name) (\(n)).txt"); n += 1 }
-    try text.write(to: out, atomically: true, encoding: .utf8)
-    return out
+// name.mp4 gives name.txt, and name.srt with subtitles on; an existing file (or link) is never overwritten or followed, and
+// the two keep one name between them (name (2).txt goes with name (2).srt). Written into the folder opened before the read.
+func saveBeside(_ source: URL, in folder: Int32, _ text: String, subtitles: String? = nil) throws -> URL {
+    let name = source.deletingPathExtension().lastPathComponent
+    for n in 1...10_000 {
+        let base = n == 1 ? name : "\(name) (\(n))"
+        let files = [(base + ".txt", text)] + (subtitles.map { [(base + ".srt", $0)] } ?? [])
+        var st = stat()
+        if files.contains(where: { fstatat(folder, $0.0, &st, AT_SYMLINK_NOFOLLOW) == 0 }) { continue }
+        var made: [String] = []
+        do {
+            for (file, body) in files { try create(folder, file, body); made.append(file) }
+            return source.deletingLastPathComponent().appendingPathComponent(base + ".txt")
+        } catch let e as POSIXError where e.code == .EEXIST {
+            for f in made { unlinkat(folder, f, 0) }   // taken between the look and the write: the next name
+        } catch {
+            for f in made { unlinkat(folder, f, 0) }
+            throw error
+        }
+    }
+    throw POSIXError(.EEXIST)
+}
+
+// A new file only (O_EXCL), never through a link (O_NOFOLLOW), readable by all as a text file is (0644).
+private func create(_ folder: Int32, _ name: String, _ body: String) throws {
+    let fd = openat(folder, name, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0o644)
+    guard fd >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+    defer { close(fd) }
+    let bytes = Array(body.utf8)
+    var done = 0
+    while done < bytes.count {
+        let w = bytes[done...].withUnsafeBytes { write(fd, $0.baseAddress, $0.count) }
+        guard w > 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
+        done += w
+    }
 }
 
 // Any file AVFoundation can open, video included: the first audio track as 16 kHz mono.
@@ -885,29 +999,15 @@ func readMedia(_ url: URL) throws -> [Float] {
 
 @main struct Main {
     static func main() {
-        startInBackgroundIfAtLogin()
         Transcribe.disableLogging()
-
         let args = CommandLine.arguments
-        if let i = args.firstIndex(of: "--file"), i + 1 < args.count {
-            do {
-                let e = Engine()
-                let name = i + 2 < args.count ? args[i + 2] : models[0].file
-                let t0 = Date()
-                try e.load(path: name.contains("/") ? name : modelsFolder.appendingPathComponent(name).path)
-                let t1 = Date()
-                let text = try e.transcribe(try readMedia(URL(fileURLWithPath: args[i + 1])))
-                FileHandle.standardError.write(String(format: "load %.2f s, run %.2f s\n", t1.timeIntervalSince(t0), Date().timeIntervalSince(t1)).data(using: .utf8)!)
-                print(text)
-                e.release()
-                exit(0)
-            } catch {
-                FileHandle.standardError.write("\(error)\n".data(using: .utf8)!)
-                exit(1)
-            }
-        }
+        // The command line (cli.swift) exits when it is one; the app goes on otherwise.
+        _ = MainActor.assumeIsolated { runCommandLine(args) }
+        startInBackgroundIfAtLogin()
 
-        let pasteboard = args.count > 2 && args[1] == "--pasteboard" ? NSPasteboard(name: .init(args[2])) : .general
+        // For tests from a terminal only: a copy started as an app (`open -n … --args --pasteboard X`) would send every
+        // dictation to a pasteboard of somebody else's choosing (security pass 2026-11-10).
+        let pasteboard = args.count > 2 && args[1] == "--pasteboard" && !answersForItself() ? NSPasteboard(name: .init(args[2])) : .general
 
         MainActor.assumeIsolated {
             let app = NSApplication.shared
