@@ -28,7 +28,7 @@ The window has Check for Updates; Model and Language (Automatic or one language)
 
 ## For advanced users and language models
 
-Recognition runs on the Mac with the open model you choose: Whisper, Parakeet or Qwen. The network is used only to download that model and to check for updates. A recording lives in memory only. No history, no logs, no account.
+Recognition runs on the Mac with an open model of choice: Whisper, Parakeet or Qwen. The network is used only to download that model and to check for updates. A recording lives in memory only. No history, no logs, no account.
 
 Audio and video files: Choose File… in the window, a drop anywhere on the window, or Open With → STT in Finder. The text is saved beside the file as a `.txt` with the same name (`Interview.m4a` gives `Interview.txt`; an existing file is never overwritten, the new one is `Interview (2).txt`) and copied to the clipboard; it is not pasted. A small window shows the progress with Cancel, then the name of the `.txt`, which shows it in Finder when clicked. Several files go one after another, each to its own `.txt`; a dictation made meanwhile waits for the file. With Save Subtitles (.srt) on, an `.srt` with timecodes goes beside the `.txt` under the same name (`Interview.srt`), one subtitle per stretch of speech the model marks. Files opened by another program than Finder or the Dock (`open -a STT` in Terminal, a script) are asked about first, since their text goes to the clipboard.
 
@@ -37,7 +37,7 @@ Audio and video files: Choose File… in the window, a drop anywhere on the wind
 - Engine: transcribe.cpp (MIT), one interface over Whisper, Parakeet and Qwen; each model is a single `.gguf` file.
 - Models download from the `handy-computer` repositories on Hugging Face at a fixed revision and are checked against a SHA-256 written in the code.
 - The microphone is recorded through `AVAudioEngine` into memory; nothing is written to disk. The recording goes on 0.3 s after the stop, so the last word isn’t cut. A Bluetooth headset is not used as the microphone, since that drops its sound to call quality: the Mac’s own microphone is taken instead, unless there is no other.
-- Words from Dictionary go first in Whisper’s prompt, fitted to its 223 tokens with the model’s own tokenizer so the punctuation example and the text so far keep their place, and into Qwen’s system message. On 199 of the author’s dictations his own words took names written right from 78 % to 80 %, and the words he added from 0-54 % to all right; nothing was invented anywhere. With the built-in pairs Whisper wrote 92 % of the names in his dictations right instead of 78 %, and Parakeet 72 % instead of 41 %.
+- Words from Dictionary go first in Whisper’s prompt, fitted to its 223 tokens with the model’s own tokenizer so the punctuation example and the text so far keep their place, and into Qwen’s system message. On 199 real dictations the words added to Dictionary went from 0-54 % written right to all of them, with nothing invented, and the built-in pairs raised the names written right from 78 % to 92 % with Whisper and from 41 % to 72 % with Parakeet.
 - Before recognition, silence is cut out and long speech is split at pauses into pieces of up to 30 s. Most models lose accuracy past 30-40 s in one run.
 - On silence and at the end of speech Whisper writes lines it learned from film subtitles, such as «Субтитры сделал DimaTorzok» or «Продолжение следует...». Such credit lines are removed when they close a piece of speech.
 - Whisper Turbo sometimes stops after a few words (a short «Vielen Dank.» for fifteen seconds of a speech) or loops one phrase. Such a piece is transcribed again without the prompt and then, if still short, at temperature 0.2, and the fuller text is kept. On European Parliament speeches this took German from 22.9 % to 16.1 % of wrong words and Dutch from 22.8 % to 12.4 %; nothing got worse.
@@ -47,7 +47,7 @@ Audio and video files: Choose File… in the window, a drop anywhere on the wind
 
 ### Models
 
-No model comes with the app. Pick one in the window and it downloads after you agree to its size, with a SHA-256 check. Models are plain `.gguf` files in `~/Library/Application Support/STT/models`. The model menu has Show in Finder and Delete.
+No model comes with the app. One is chosen in the window and downloads after its size is confirmed, with a SHA-256 check. Models are plain `.gguf` files in `~/Library/Application Support/STT/models`. The model menu has Show in Finder and Delete.
 
 | Model | Full name | Size | Languages | License |
 |---|---|---|---|---|
@@ -61,7 +61,7 @@ Qwen’s 30 languages: Chinese, English, Cantonese, Arabic, German, French, Span
 
 ### Measured
 
-Word error rate through this app’s pipeline, on 40 real sentences per language from the public FLEURS set, on a MacBook Pro with M3 Pro. A short test, read speech: it shows the order of things and does not rank the models for your voice. Speed is how many times faster than real time.
+Word error rate through this app’s pipeline, on 40 real sentences per language from the public FLEURS set, on a MacBook Pro with M3 Pro. A short test, read speech: it shows the order of things and does not rank the models for any one voice. Speed is how many times faster than real time.
 
 | Model | Russian | Ukrainian | English | German | Speed |
 |---|---|---|---|---|---|
@@ -79,9 +79,9 @@ Other people’s spontaneous speech: speeches in the European Parliament (VoxPop
 
 ### Questions
 
-#### Does my voice leave the Mac?
+#### Does the voice leave the Mac?
 
-No. The code goes online only to download the model you chose and to check for updates; a recording never leaves memory.
+No. The code goes online only to download the chosen model and to check for updates; a recording never leaves memory.
 
 #### Does it work without internet?
 
@@ -91,7 +91,7 @@ Yes, once a model is downloaded.
 
 Microphone to record. Accessibility to paste the text and to catch Option-Command-Space, a shortcut macOS keeps for itself. macOS asks for each only after the first model is downloaded, one at a time.
 
-#### Which model should I choose?
+#### Which model to choose?
 
 Parakeet made the fewest errors on other people’s speech in all eight languages measured and is the fastest; it always detects the language by itself. Whisper has the most languages and lets one be chosen. Qwen is the largest and the slowest and has no Ukrainian: it writes Ukrainian speech as a mixture of Russian and Polish words. Each can be tried and deleted.
 
@@ -103,17 +103,17 @@ Filler sounds such as “uh” are removed. Words are never touched. No AI rewri
 
 Yes, offline, with the chosen model: Choose File… in the window, a drop on the window, or Open With → STT in Finder. The text is saved beside the file as a `.txt` with the same name (and, with Save Subtitles (.srt) on, an `.srt` with timecodes) and copied to the clipboard. Several files at once give a `.txt` each. Shortcuts and the command line `stt-cli` do the same without the window.
 
-#### Can I add my own words or names?
+#### Can words or names be added?
 
 Yes, in Dictionary (Edit… in the window). Words: names and terms written exactly as typed; Return adds one, Delete removes it, Restore brings back the 24 built-in ones (ChatGPT, Claude, GitHub and others). Whisper and Qwen take them; Parakeet takes no word list, and the window says so. Replacements: what a model writes and what to write instead, for every model, applied to the finished text; the table starts with 104 built-in pairs for names said in Russian or Ukrainian (клод → Claude, ютуб → YouTube), and its own Restore brings back removed ones.
 
 #### How is it different from macOS Dictation?
 
-macOS Dictation comes with the system and its model can’t be chosen. In STT the model is an open one of your choice, kept as a plain file.
+macOS Dictation comes with the system and its model can’t be chosen. In STT the model is an open one, chosen in the window and kept as a plain file.
 
 ### Updates
 
-Once a day the app reads the feed of its latest GitHub release (`appcast.xml`) through Sparkle, the usual open source updater for Mac apps. Nothing about the Mac is sent. When a newer version is out, a window shows it with Install Update, Remind Me Later and Skip This Version; nothing is downloaded before Install Update. Check for Updates in the window checks at once.
+Once a day the app reads the feed of its latest GitHub release (`appcast.xml`) through Sparkle. Nothing about the Mac is sent. When a newer version is out, a window shows it with Install Update, Remind Me Later and Skip This Version; nothing is downloaded before Install Update. Check for Updates in the window checks at once.
 
 The feed and the disk image are signed with an EdDSA key, and Sparkle installs only an app that carries the same Developer ID signature.
 
