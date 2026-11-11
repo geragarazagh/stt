@@ -28,7 +28,7 @@ The window has Check for Updates; Model and Language (Automatic or one language)
 
 ## For advanced users and language models
 
-Recognition runs on the Mac with an open model of choice: Whisper, Parakeet or Qwen. The network is used only to download that model and to check for updates. A recording lives in memory only. No history, no logs, no account.
+Recognition runs on the Mac with an open model of choice: Whisper, Parakeet or Qwen. The network is used only to download that model and to check for updates; language, dictionary and the subtitles switch also go through iCloud to the other Macs of the same account. A recording lives in memory only. No history, no logs, no account of its own.
 
 Audio and video files: Choose File… in the window, a drop anywhere on the window, or Open With → STT in Finder. The text is saved beside the file as a `.txt` with the same name (`Interview.m4a` gives `Interview.txt`; an existing file is never overwritten, the new one is `Interview (2).txt`) and copied to the clipboard; it is not pasted. A small window shows the progress with Cancel, then the name of the `.txt`, which shows it in Finder when clicked. Several files go one after another, each to its own `.txt`; a dictation made meanwhile waits for the file. With Save Subtitles (.srt) on, an `.srt` with timecodes goes beside the `.txt` under the same name (`Interview.srt`), one subtitle per stretch of speech the model marks. Files opened by another program than Finder or the Dock (`open -a STT` in Terminal, a script) are asked about first, since their text goes to the clipboard.
 
@@ -81,7 +81,11 @@ Other people’s spontaneous speech: speeches in the European Parliament (VoxPop
 
 #### Does the voice leave the Mac?
 
-No. The code goes online only to download the chosen model and to check for updates; a recording never leaves memory.
+No. The code goes online only to download the chosen model and to check for updates, and iCloud carries three settings (below); a recording never leaves memory.
+
+#### Do the settings sync between Macs?
+
+Yes, by themselves, with no switch: Language, the Dictionary (words and replacements) and Save Subtitles (.srt) are the same on every Mac signed in to one iCloud account, through iCloud key-value storage; the later change wins. The model, the shortcuts and the other switches stay with each Mac. Without iCloud everything works the same on that Mac alone.
 
 #### Does it work without internet?
 
@@ -119,7 +123,7 @@ The feed and the disk image are signed with an EdDSA key, and Sparkle installs o
 
 ### Settings and removal
 
-Settings (model, language, shortcuts, switches, dictionary) and the time of the last update check are in the defaults of `com.geragaraza.stt`, models in `~/Library/Application Support/STT/models`.
+Settings (model, language, shortcuts, switches, dictionary) and the time of the last update check are in the defaults of `com.geragaraza.stt`, models in `~/Library/Application Support/STT/models`. The three synced settings are also kept for the iCloud account by the key-value service of macOS; they take no iCloud storage.
 
 To remove STT: delete the models in the model menu or in that folder, Quit in the window, move `STT.app` to the Trash and run `defaults delete com.geragaraza.stt`. Its Microphone and Accessibility entries are removed in System Settings, Privacy & Security.
 
@@ -127,7 +131,7 @@ Installed with Homebrew, `brew uninstall --zap stt` quits it and removes the app
 
 ### Shortcuts
 
-STT adds three actions to the Shortcuts app: Start Recording and Stop Recording act as the shortcut key does (the text is pasted as usual, and Stop Recording also gives it to the next action), and Transcribe File gives the text of an audio or video file to the next action without saving a `.txt`. A shortcut made of them can go on a key, a schedule or an automation.
+STT adds four actions to the Shortcuts app: Record is one press of the shortcut key (it starts a recording, or stops it and gives the text to the next action); Start Recording and Stop Recording act as the shortcut key does (the text is pasted as usual, and Stop Recording also gives it to the next action), and Transcribe File gives the text of an audio or video file to the next action without saving a `.txt`. A shortcut made of them can go on a key, a schedule or an automation.
 
 ### Command line
 
@@ -143,20 +147,20 @@ Files are read with the rights of the program that runs the command, not the app
 
 ### Details
 
-- Version: 0.5.
+- Version: 0.6.
 - Bundle ID: `com.geragaraza.stt`.
-- Download: `STT.dmg`, 4.2 MB.
+- Download: `STT.dmg`, 4.1 MB.
 - Models: downloaded separately, 740 to 2,185 MB each.
 - Requires: Apple silicon, macOS 13 or later.
-- Permissions: Microphone, Accessibility. Network: to download a model and to check for updates.
+- Permissions: Microphone, Accessibility. Network: to download a model and to check for updates; iCloud for three settings.
 - Signed with a Developer ID and notarized by Apple.
 - Interface: English, Ukrainian, Russian, from the language of macOS.
-- Code: Swift with AppKit, about 2,100 lines, the transcribe.cpp framework, and Sparkle for updates.
+- Code: Swift with AppKit, about 2,500 lines, the transcribe.cpp framework, and Sparkle for updates.
 - License: MIT.
 
 ### Build
 
-Needs Xcode 26 or later in Applications: the Swift compiler, and actool with Icon Composer for the light and dark icon. The first build downloads the transcribe.cpp and Sparkle frameworks from their releases.
+Needs Xcode 26 or later in Applications: the Swift compiler, and actool with Icon Composer for the light and dark icon. The first build downloads the transcribe.cpp and Sparkle frameworks from their releases. A build from source works the same without iCloud sync, which needs the author’s signature and provisioning profile.
 
     ./build
 
