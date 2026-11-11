@@ -5,3 +5,4 @@ vendor/Sparkle.framework
 *.dmg
 .release
 appcast.xml
+STT.provisionprofile

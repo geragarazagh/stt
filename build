@@ -1,9 +1,10 @@
 #!/bin/zsh
-# Builds STT.app in this folder. Needs Xcode Command Line Tools and nothing else.
+# Builds STT.app in this folder from shared/ (what the Mac and iPhone apps share) and mac/. Needs Xcode (the Shortcuts
+# metadata and the icon, below).
 set -e
 cd "${0:A:h}"
 # It changes per release, not per build.
-version=0.5 min=13.0 id=com.geragaraza.stt app=STT.app engine=0.4.1
+version=0.6 min=13.0 id=com.geragaraza.stt app=STT.app engine=0.4.1
 tmp=$(mktemp -d); trap 'rm -rf $tmp' EXIT
 rm -rf "$app" STT.zip
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources" "$app/Contents/Frameworks"
@@ -42,7 +43,7 @@ for b in Sparkle Autoupdate Updater.app/Contents/MacOS/Updater; do
 done
 
 # Whole module, with the constant values Xcode's App Intents step reads (the Shortcuts actions of intents.swift).
-sources=(entry.swift engine.swift dictionary.swift window.swift files.swift media.swift download.swift updates.swift cli.swift intents.swift vendor/*.swift)
+sources=(shared/*.swift mac/{entry,window,dictionary-window,files,media,updates,cli}.swift vendor/*.swift)
 echo '["AppIntent","EntityQuery","AppEntity","TransientEntity","AppEnum","AppShortcutProviding","AppShortcutsProvider","AnyResolverProviding","AppIntentsPackage","DynamicOptionsProvider"]' > $tmp/protocols.json
 swiftc -O -wmo -target arm64-apple-macos$min -parse-as-library -module-name STT -F vendor -framework CTranscribe -framework Sparkle \
   -emit-const-values-path $tmp/STT.swiftconstvalues -Xfrontend -const-gather-protocols-file -Xfrontend $tmp/protocols.json \
@@ -72,7 +73,7 @@ DEVELOPER_DIR=$xd xcrun appintentsmetadataprocessor --output "$app/Contents/Reso
 # The light picture sits in the specializations list as the entry without an appearance: given as plain image-name,
 # Icon Composer ignored the dark entry and darkened the light picture itself (measured with ictool, 2026-11-09).
 xc=/Applications/Xcode.app/Contents
-swiftc -O -o $tmp/icon icon.swift
+swiftc -O -o $tmp/icon mac/icon.swift
 mkdir -p $tmp/AppIcon.icon/Assets docs
 $tmp/icon $tmp/AppIcon.icon/Assets docs/wave.svg   # and the wave for the site
 cat > $tmp/AppIcon.icon/icon.json <<'JSON'
@@ -93,7 +94,7 @@ for r in Default Dark; do
   sips -p 256 256 $tmp/$r.png --out docs/icon${${r:#Default}:+-dark}.png >/dev/null
 done
 cp vendor/silero-vad-v6.2-F32.gguf LICENSE THIRD-PARTY-LICENSES.md "$app/Contents/Resources/"
-clang -O2 -target arm64-apple-macos$min -dynamiclib -o "$app/Contents/Resources/playing.dylib" playing.c
+clang -O2 -target arm64-apple-macos$min -dynamiclib -o "$app/Contents/Resources/playing.dylib" mac/playing.c
 
 # Document types: audio and video, so Finder lists STT under Open With. Alternate: a second opener, never the default
 # one for a type another app owns, so a double click keeps opening the player people chose.
@@ -132,8 +133,8 @@ cat > "$app/Contents/Info.plist" <<PLIST
 PLIST
 
 for l in ru uk; do
-  mkdir "$app/Contents/Resources/$l.lproj"; cp lang/$l.strings "$app/Contents/Resources/$l.lproj/Localizable.strings"
-  cp lang/$l.InfoPlist.strings "$app/Contents/Resources/$l.lproj/InfoPlist.strings"
+  mkdir "$app/Contents/Resources/$l.lproj"; cp mac/lang/$l.strings "$app/Contents/Resources/$l.lproj/Localizable.strings"
+  cp mac/lang/$l.InfoPlist.strings "$app/Contents/Resources/$l.lproj/InfoPlist.strings"
 done
 mkdir "$app/Contents/Resources/en.lproj"   # English is the text in the code
 
@@ -154,11 +155,24 @@ PLIST
 # Hardened runtime: notarisation requires it, and with it the microphone needs its entitlement.
 # disable-library-validation only for ad hoc, which has no team: dyld refused the framework without it
 # ("different Team IDs", measured 2026-11-05). A Developer ID build doesn't carry it.
+# iCloud key-value storage (0.6, settings and the dictionary shared with the person's other devices, shared/store.swift):
+# a restricted entitlement, so only a build signed by the team that owns the store carries it, together with the
+# team's Developer ID provisioning profile for this bundle id (Contents/embedded.provisionprofile; made once with
+# Xcode, kept beside the source and out of git, valid to 2044). Built by anyone else, the app simply doesn't sync.
+team=4PWXU4KC48 cloud=
+if [[ "${SIGN_ID:-}" == *"($team)"* ]]; then
+  [ -f STT.provisionprofile ] || { echo "STT.provisionprofile missing: a signed build without it would not sync"; exit 1; }
+  cp STT.provisionprofile "$app/Contents/embedded.provisionprofile"
+  cloud="<key>com.apple.application-identifier</key><string>$team.$id</string>
+<key>com.apple.developer.team-identifier</key><string>$team</string>
+<key>com.apple.developer.ubiquity-kvstore-identifier</key><string>$team.$id</string>"
+fi
 cat > $tmp/e.plist <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
 <key>com.apple.security.device.audio-input</key><true/>
+$cloud
 $([ "${SIGN_ID:--}" = - ] && echo '<key>com.apple.security.cs.disable-library-validation</key><true/>')
 </dict></plist>
 PLIST

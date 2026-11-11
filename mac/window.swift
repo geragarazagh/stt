@@ -74,9 +74,6 @@ func startInBackgroundIfAtLogin() {
     exit(0)
 }
 
-// The English text is the key; ru and uk come from lang/, picked by macOS from the system language.
-// Wording of macOS's own terms (Open at Login, Quit, Privacy & Security) is copied from its .loctable files.
-func L(_ s: String) -> String { NSLocalizedString(s, comment: "") }
 
 // Carbon's handler is a C function and can capture nothing.
 private var onHotKey: (() -> Void)?

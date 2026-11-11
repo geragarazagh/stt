@@ -68,6 +68,8 @@
 "A password field is active" = "Відкрито поле пароля";
 "The text was not pasted or copied." = "Текст не вставлено й не скопійовано.";
 "Save Subtitles (.srt)" = "Зберігати субтитри (.srt)";
+"Record" = "Запис";
+"Starts a recording, or stops it and gives its text, as a press of the key of STT does." = "Починає запис або зупиняє його й віддає текст, як натискання клавіші STT.";
 "Start Recording" = "Почати запис";
 "Stop Recording" = "Зупинити запис";
 "Starts a recording, as the key of STT does." = "Починає запис, як клавіша STT.";

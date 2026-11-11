@@ -4,7 +4,7 @@
 "Needs ⌘, ⌥ or ⌃" = "Нужна ⌘, ⌥ или ⌃";
 "Conflicts with macOS" = "Конфликтует с macOS";
 "This shortcut can’t be used" = "Это сочетание недоступно";
-"Open at Login" = "Открывать при входе";
+"Open at Login" = "Открывать при входе";
 "Herman Harazha" = "Герман Гаража";
 "GitHub" = "Гитхаб";
 "Quit" = "Завершить";
@@ -68,6 +68,8 @@
 "A password field is active" = "Открыто поле пароля";
 "The text was not pasted or copied." = "Текст не вставлен и не скопирован.";
 "Save Subtitles (.srt)" = "Сохранять субтитры (.srt)";
+"Record" = "Запись";
+"Starts a recording, or stops it and gives its text, as a press of the key of STT does." = "Начинает запись или останавливает её и отдаёт текст, как нажатие клавиши STT.";
 "Start Recording" = "Начать запись";
 "Stop Recording" = "Остановить запись";
 "Starts a recording, as the key of STT does." = "Начинает запись, как клавиша STT.";
