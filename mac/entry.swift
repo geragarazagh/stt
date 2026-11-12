@@ -155,6 +155,7 @@ func startKeyTap(_ handler: @escaping (Int, Int, Bool, Bool) -> Bool) -> Bool {
     var main: MainWindow?
     var levelTimer: Timer?
     let keepPicker = NSPopUpButton(frame: .zero)
+    let keepSwitch = NSSwitch(frame: .zero)   // the keep setting as one switch (KeepMenu variant C)
     let picker = NSPopUpButton(frame: .zero)
     let languagePicker = NSPopUpButton(frame: .zero)
     let note = NSTextField(labelWithString: "")
@@ -200,7 +201,7 @@ func startKeyTap(_ handler: @escaping (Int, Int, Bool, Bool) -> Bool) -> Bool {
         if let m = current {
             load(m)
             if window?.wantedAtLaunch == true { showMain(); demo() }
-        } else { window?.show() }
+        } else { window?.show(); demo() }   // demo(): the test copy only
         if AXIsProcessTrusted() { tryTap() }
         control.toggle = { [weak self] in
             guard let self else { return "STT is not ready." }
@@ -393,6 +394,12 @@ func startKeyTap(_ handler: @escaping (Int, Int, Bool, Bool) -> Bool) -> Bool {
         keepPicker.target = self; keepPicker.action = #selector(pickedKeep)
         keepPicker.refusesFirstResponder = true
         row.addSubview(keepPicker)
+        keepSwitch.controlSize = .small
+        keepSwitch.sizeToFit()
+        keepSwitch.frame.origin = NSPoint(x: 340 - 20 - keepSwitch.frame.width + 5, y: height + history - 10)
+        keepSwitch.refusesFirstResponder = true
+        keepSwitch.target = self; keepSwitch.action = #selector(switchedKeep)
+        row.addSubview(keepSwitch)
         rebuildKeep()
         return row
     }

@@ -2,6 +2,7 @@
 // arguments: -demo empty|text|recording|transcribing|first, -sheet settings|dictionary.
 #if DEBUG
 import ActivityKit
+import AVFoundation
 import SwiftUI
 
 enum Demo {
@@ -63,6 +64,29 @@ enum Demo {
                 d.text = sample
                 if let r = History.shared.add(text: sample, samples: [Float](repeating: 0, count: 16000 * 5), model: d.current?.id ?? "",
                                               language: nil) { Shelf.shared.added(r) }
+                d.phase = .idle
+            }
+        case "replay":
+            // Debug, for the wave's frame-by-frame checks: Documents/replay.wav (16 kHz mono) fed in the microphone's
+            // own pieces (4096 frames at 48 kHz = 1365 at 16 kHz, every 85 ms), after 1.5 s of the empty screen.
+            let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("replay.wav")
+            guard let f = try? AVAudioFile(forReading: url), let buf = AVAudioPCMBuffer(pcmFormat: f.processingFormat, frameCapacity: AVAudioFrameCount(f.length)),
+                  (try? f.read(into: buf)) != nil else { print("replay: no file"); break }
+            let all = Array(UnsafeBufferPointer(start: buf.floatChannelData![0], count: Int(buf.frameLength)))
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(1.5))
+                d.started = Date(); d.stopped = nil; d.history = []; d.phase = .recording; d.replaying = true
+                var at = 0
+                let t = Timer.scheduledTimer(withTimeInterval: 1365.0 / 16000, repeats: true) { _ in
+                    MainActor.assumeIsolated {
+                        // By the clock, as a microphone delivers: every piece due by now, none skipped when a tick is late.
+                        let due = min(all.count, Int(Date().timeIntervalSince(d.started) * 16000))
+                        while at + 1365 <= due { d.replay(Array(all[at..<(at + 1365)])); at += 1365 }
+                    }
+                }
+                try? await Task.sleep(for: .seconds(Double(all.count) / 16000))
+                t.invalidate(); d.replaying = false; d.stopped = Date(); d.phase = .transcribing
+                try? await Task.sleep(for: .seconds(1.5))
                 d.phase = .idle
             }
         case "island":

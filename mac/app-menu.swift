@@ -46,23 +46,49 @@ extension App {
 
     // MARK: keep
 
-    static let keeps: [(Keep, String)] = [(.all, "Keep All"), (.days(30), "30 Days"), (.days(7), "7 Days"),
-                                          (.last(100), "Last 100"), (.never, "Don’t Keep")]
-
+    // One scale, short to long (KeepMenu): off, the periods, the open end, separated as macOS groups a pop-up's kinds.
+    // B adds «Last…» for his own number; a «Last N» set earlier stays listed with its number. C is one switch.
     func rebuildKeep() {
-        keepPicker.removeAllItems()
-        for (k, title) in App.keeps {
-            keepPicker.addItem(withTitle: L(title))
-            keepPicker.lastItem?.representedObject = k.string
-        }
         let now = History.shared.keep
-        keepPicker.selectItem(at: App.keeps.firstIndex { $0.0 == now } ?? 0)
+        keepSwitch.isHidden = KeepMenu.variant != "C"; keepPicker.isHidden = !keepSwitch.isHidden
+        keepSwitch.state = now == .never ? .off : .on
+        keepPicker.removeAllItems()
+        func add(_ k: Keep, _ title: String) {
+            keepPicker.addItem(withTitle: title)
+            keepPicker.lastItem?.representedObject = k.string
+            if k == now { keepPicker.select(keepPicker.lastItem) }
+        }
+        for (i, (k, title)) in KeepMenu.scale.enumerated() {
+            if i == 1 || i == KeepMenu.scale.count - 1 { keepPicker.menu?.addItem(.separator()) }
+            add(k, L(title))
+        }
+        if case .last(let n) = now { keepPicker.menu?.addItem(.separator()); add(now, String(format: L("Last %d"), n)) }
+        if KeepMenu.variant == "B" {
+            if case .last = now {} else { keepPicker.menu?.addItem(.separator()) }
+            keepPicker.addItem(withTitle: L("Last…")); keepPicker.lastItem?.representedObject = "ask"
+        }
     }
 
-    // A choice that would throw recordings away asks once, with the number.
+    // A choice that would throw recordings away asks once, with the number. «Last…» asks for the number first.
     @objc func pickedKeep() {
-        guard let raw = keepPicker.selectedItem?.representedObject as? String else { return }
-        let new = Keep(raw)
+        guard var raw = keepPicker.selectedItem?.representedObject as? String else { return }
+        if raw == "ask" {
+            let a = NSAlert()
+            a.messageText = L("How many recent recordings to keep?")
+            let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 80, height: 24))
+            if case .last(let n) = History.shared.keep { field.integerValue = n } else { field.integerValue = 100 }
+            let f = NumberFormatter(); f.minimum = 1; f.maximum = 99999; f.allowsFloats = false; field.formatter = f
+            a.accessoryView = field
+            a.addButton(withTitle: L("OK")); a.addButton(withTitle: L("Cancel"))
+            a.window.initialFirstResponder = field
+            guard a.runModal() == .alertFirstButtonReturn, field.integerValue > 0 else { rebuildKeep(); return }
+            raw = Keep.last(field.integerValue).string
+        }
+        setKeep(Keep(raw))
+    }
+    @objc func switchedKeep() { setKeep(keepSwitch.state == .on ? .all : .never) }
+
+    private func setKeep(_ new: Keep) {
         let gone = History.shared.wouldErase(new)
         if gone > 0 {
             let a = NSAlert()
@@ -72,9 +98,10 @@ extension App {
             a.addButton(withTitle: L("Cancel"))
             if a.runModal() != .alertFirstButtonReturn { rebuildKeep(); return }
         }
-        Store.shared.set(raw, Keep.key)
+        Store.shared.set(new.string, Keep.key)
         History.shared.purge()
         Shelf.shared.reload()
+        rebuildKeep()
     }
 
     // MARK: transcribe again
@@ -181,6 +208,9 @@ extension App {
                 }
             }
         case "settings": window?.show()
+        case "keep":   // the keep menu open over the Settings window, for the shots of its variants
+            window?.show(); NSApp.activate(ignoringOtherApps: true)
+            if KeepMenu.variant != "C" { DispatchQueue.main.asyncAfter(deadline: .now() + 2) { self.keepPicker.performClick(nil) } }
         case "dictionary": window?.show(); showDictionary()
         case "select": DispatchQueue.main.asyncAfter(deadline: .now() + 1) { s.demoSelection = 3 }
         case "confirm": DispatchQueue.main.asyncAfter(deadline: .now() + 1) { s.folder = .deleted; s.demoAsk = true; s.demoSelection = 2 }

@@ -17,6 +17,20 @@ struct RecordingAttributes: ActivityAttributes {
     }
 }
 
+// The running wave's numbers and reds, shared by the card and the Live Activity. The reds are Voice Memos' own, read from
+// its code on macOS 27.2 (VoiceMemos.app is the iPhone app built for the Mac: RCRecorderStyleProvider and
+// RCWaveformColorCalculator, 2026-11-12): the live wave is the system red #FF3B30 at 80 % laid over black in dark mode
+// and over white in light, so #CC2F26 and #FF6259, the «darker, muted» red he saw beside STT's full red (his look at
+// 0.2 (3)); the island's wave and time are its platter red #FF5958. Stop keeps the system red, as in Voice Memos.
+enum Wave {
+    static let margin: Float = 10     // dB over the room's floor: its noise stays on the dotted line
+    static let top: Float = -4        // dB that reaches the top
+    static let lag = 0.2              // s the strip runs behind the clock, so a bar is always drawn before it shows
+    static let card = Color(UIColor { $0.userInterfaceStyle == .dark ? UIColor(red: 204 / 255, green: 47 / 255, blue: 38 / 255, alpha: 1)
+                                                                       : UIColor(red: 1, green: 98 / 255, blue: 89 / 255, alpha: 1) })
+    static let island = Color(red: 1, green: 89 / 255, blue: 88 / 255)
+}
+
 // The island's wave, as Voice Memos draws its own: red bars of the last seconds, a dotted line where it was quiet. A
 // Live Activity is redrawn only when the app sends a new state (four a second here), so smoothness comes from the
 // system's own animation between two states: every bar keeps its number (first + i), and a new state slides the same
@@ -35,7 +49,7 @@ struct IslandWave: View {
                     let k = b.k, v = b.v
                     let slot = CGFloat(bars - shown.count + k)
                     let h = CGFloat(v) / 100
-                    Capsule().fill(.red)
+                    Capsule().fill(Wave.island)
                         .frame(width: bar, height: h < 0.08 ? bar : max(bar, h * g.size.height))
                         .offset(x: slot * pitch)
                         .transition(.opacity)

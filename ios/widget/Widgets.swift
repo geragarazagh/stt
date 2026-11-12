@@ -50,13 +50,13 @@ struct RecordingActivity: Widget {
     }
 }
 
-// The red running time, rounded figures as Voice Memos'.
+// The red running time, rounded figures as Voice Memos', in its platter red.
 struct Clock: View {
     var started: Date, size: CGFloat
     var body: some View {
         Text(started, style: .timer)
             .font(.system(size: size, weight: .semibold, design: .rounded).monospacedDigit())
-            .foregroundStyle(.red)
+            .foregroundStyle(Wave.island)
             .multilineTextAlignment(.trailing)
             .frame(maxWidth: size * 3.4, alignment: .trailing)
             .lineLimit(1)

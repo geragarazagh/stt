@@ -40,6 +40,13 @@ let phoneModels = models.filter { $0.id != "Qwen3-ASR-1.7B" }
     var stopped: Date?                   // when Stop was pressed: the timer and the wave stand still from then
     @ObservationIgnored private var binSum: Float = 0
     @ObservationIgnored private var binCount = 0
+    @ObservationIgnored private var recent: [Float] = []   // the last 6 s of bins in dB, for the room's noise floor
+    // How far the running wave stays behind the clock (RunningWave): Wave.lag, raised smoothly if the microphone ever
+    // delivers later than that, so the strip's end never shows a bar arriving.
+    @ObservationIgnored private var lagTo = Wave.lag
+    @ObservationIgnored private var lagFrom = Wave.lag
+    @ObservationIgnored private var lagSince = Date.distantPast
+    func waveLag(at t: Date) -> Double { lagFrom + (lagTo - lagFrom) * min(1, max(0, t.timeIntervalSince(lagSince) / 0.5)) }
     var problem: String?                 // a fact for an alert («No speech found»)
     var audio: URL?         // the last recording, for Send
 
@@ -60,6 +67,12 @@ let phoneModels = models.filter { $0.id != "Qwen3-ASR-1.7B" }
     private var tail: Task<Void, Never>?
 
     var isRecording: Bool { phase == .recording }
+    #if DEBUG
+    @ObservationIgnored var replaying = false   // Demo «replay»: a recorded sound fed as the microphone would
+    func replay(_ chunk: [Float]) { take(chunk, level: 0) }
+    #else
+    private let replaying = false
+    #endif
 
     // Copy Text: on this device only, on unless the person turns it off (the Mac always copies; some want the text to
     // stay in the app, his word 2026-11-11).
@@ -116,7 +129,8 @@ let phoneModels = models.filter { $0.id != "Qwen3-ASR-1.7B" }
                 Task { @MainActor in Dictation.shared.take(chunk, level: min(1, rms * 12)) }
             }
             try e.start()
-            mic = e; file = f; audio = nil; started = Date(); stopped = nil; history = []; binSum = 0; binCount = 0
+            mic = e; file = f; audio = nil; started = Date(); stopped = nil; history = []; binSum = 0; binCount = 0; recent = []
+            lagTo = Wave.lag; lagFrom = Wave.lag; lagSince = .distantPast
             phase = .recording
             UserDefaults.standard.set(true, forKey: "recordingOpen")
             UIApplication.shared.isIdleTimerDisabled = true
@@ -135,19 +149,34 @@ let phoneModels = models.filter { $0.id != "Qwen3-ASR-1.7B" }
 
     // Taken while the microphone is open, the 0.3 s tail after Stop included.
     private func take(_ chunk: [Float], level: Float) {
-        guard mic != nil else { return }
+        guard mic != nil || replaying else { return }
         samples.append(contentsOf: chunk)
+        // The sound so far against the clock: a piece that came later than the wave's lag allows raises the lag over
+        // half a second (the strip slows a little, never jumps).
+        let now = Date(), behind = now.timeIntervalSince(started) - Double(samples.count) / 16000
+        if behind + 0.08 > lagTo { lagFrom = waveLag(at: now); lagTo = behind + 0.13; lagSince = now }
         levels.removeFirst(); levels.append(level)
         for v in chunk {
             binSum += v * v; binCount += 1
-            // Loudness in decibels, -55 dB (room) to -5 dB (loud speech) mapped to 0...1: a straight RMS × 12 hit the
-            // top on his iPhone's microphone (his 13:25 video, the wave filled the card).
             if binCount == 800 {
-                let db = 10 * log10(max(binSum / 800, 1e-10))
-                history.append(min(1, max(0, (db + 55) / 50))); binSum = 0; binCount = 0
+                history.append(binLevel(10 * log10(max(binSum / 800, 1e-10)))); binSum = 0; binCount = 0
                 if history.count % 5 == 0 { updateActivity() }   // four times a second: the island's wave
             }
         }
+    }
+
+    // One 50 ms bin's height, 0...1, with the room's own noise at 0: the wave's dotted line, as Voice Memos draws
+    // silence. The floor is the quiet end (10th percentile) of the last 6 s, so it follows any room and microphone and
+    // shrugs off the engine's first near-empty buffers: his iPhone's room sat around -30 dB (0.2 (3): the fixed -55 dB
+    // floor drew silence as a strip of half-height bars), his Mac's dictations between -60 and -75. Above the gate a
+    // straight line in decibels up to -4 dB, at least 20 dB wide. Tuned 2026-11-12 on his 103 Mac dictations and a
+    // phone-level room (stt-iphone.md, «0.3: the wave»).
+    private func binLevel(_ db: Float) -> Float {
+        if db > -90 { recent.append(db); if recent.count > 120 { recent.removeFirst() } }
+        guard !recent.isEmpty else { return 0 }
+        let floor = recent.sorted()[recent.count / 10]
+        let gate = min(floor + Wave.margin, -14), span = max(Wave.top - gate, 20)
+        return min(1, max(0, (db - gate) / span))
     }
 
     // The Mac keeps 0.3 s more after the stop so the last word isn't cut; the same here.

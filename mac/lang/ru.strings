@@ -89,6 +89,17 @@
 "30 Days" = "30 дней";
 "7 Days" = "7 дней";
 "Last 100" = "Последние 100";
+/* The keep scale (0.3): Messages and Voice Memos words on iOS 27.2 («1 год», «Бессрочно» / «1 рік», «Завжди»). */
+"1 Day" = "1 день";
+"1 Year" = "1 год";
+"Forever" = "Бессрочно";
+"Last %d" = "Последние %d";
+"Last %lld" = "Последние %lld";
+"Last…" = "Последние…";
+"How many recent recordings to keep?" = "Сколько последних записей хранить?";
+"OK" = "OK";
+"Recordings beyond this number are deleted, the oldest first." = "Записи сверх этого числа удаляются, начиная с самых старых.";
+"Number" = "Число";
 "Don’t Keep" = "Не хранить";
 "Delete %d recordings?" = "Удалить записи (%d)?";
 "Delete this recording?" = "Удалить запись?";

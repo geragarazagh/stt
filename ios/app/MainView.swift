@@ -190,21 +190,24 @@ struct RecordRing: View {
     }
 }
 
-// The recording so far, scrolling to the left as it grows, newest at the right edge: thin red bars, a dotted line where
-// it was quiet (Voice Memos' look). Each bar is 50 ms; positions come from the clock, so it moves every frame, not
-// every buffer. After Stop it stands still and greys while the text is made.
+// The recording so far, scrolling to the left as it grows: thin red bars, a dotted line where it was quiet (Voice Memos'
+// look). Each bar is 50 ms. The strip is placed by the clock every frame, a fixed lag behind it (Wave.lag, raised by
+// Dictation if the microphone is ever later), so a bar is already there when its place slides in at the right edge. Until 0.3 it was placed at the clock itself: the bars arrive a
+// buffer at a time (about 0.1 s), so the strip's end jumped back and forth by a bar («как степлером», his look at 0.2
+// (3)). After Stop it stands still and greys while the text is made.
 struct RunningWave: View {
     var history: [Float], started: Date, stopped: Date?
     var body: some View {
         TimelineView(.animation(paused: stopped != nil)) { t in
             Canvas { ctx, size in
-                let elapsed = (stopped ?? t.date).timeIntervalSince(started)
+                let at = stopped ?? t.date, now = at.timeIntervalSince(started) - Dictation.shared.waveLag(at: at)
                 let pitch: CGFloat = 5, bar: CGFloat = 3, perSecond = pitch * 20
-                let color: Color = stopped == nil ? .red : Color(.systemGray)
-                let first = max(0, history.count - Int(size.width / pitch) - 2)
-                for i in first..<history.count {
-                    let x = size.width - CGFloat(elapsed - Double(i) * 0.05) * perSecond
+                let color: Color = stopped == nil ? Wave.card : Color(.systemGray)
+                let first = max(0, Int(now / 0.05) - Int(size.width / pitch) - 2)
+                for i in min(first, history.count)..<history.count {
+                    let x = size.width - CGFloat(now - Double(i) * 0.05) * perSecond
                     guard x > -bar else { continue }
+                    guard x < size.width else { break }
                     let h = max(bar, CGFloat(history[i]) * size.height)
                     ctx.fill(Path(roundedRect: CGRect(x: x, y: (size.height - h) / 2, width: bar, height: h), cornerRadius: bar / 2),
                              with: .color(color))
