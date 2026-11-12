@@ -1,0 +1,33 @@
+"Settings" = "Настройки";
+"Send" = "Отправить";
+"Text" = "Текст";
+"Audio" = "Аудио";
+"History" = "История";
+"Off" = "Выкл.";
+"History comes with the Mac’s." = "История появится вместе с историей на Mac.";
+"OK" = "ОК";
+"Add" = "Добавить";
+"Names and terms written exactly as here." = "Названия и термины будут написаны так, как здесь.";
+"STT %@" = "STT %@";
+"Starts a recording, or stops it and gives its text." = "Начинает запись или останавливает её и отдаёт текст.";
+"No Text Yet" = "Текста пока нет";
+"The text appears here after a recording." = "Текст появится здесь после записи.";
+"Copy Text" = "Копировать текст";
+"The text goes to the clipboard as soon as it is ready." = "Текст попадает в буфер обмена, как только готов.";
+
+/* History (brief C, 2026-11-11). */
+"Recordings" = "Записи";
+"Select" = "Выбрать";
+"Deselect All" = "Снять выбор";
+"More" = "Ещё";
+"Every recording lands here as text." = "Каждая запись ложится сюда текстом.";
+"Delete Recording" = "Удалить запись";
+"Delete %lld Recordings" = "Удалить записи (%lld)";
+"Delete %lld recordings?" = "Удалить записи (%lld)?";
+"The audio and the text are deleted from this iPhone." = "Аудио и текст удалятся с этого iPhone.";
+"The audio of this recording is not on this iPhone." = "Аудио этой записи нет на этом iPhone.";
+"Texts and audio stay on this iPhone; the setting is the same on every device with this iCloud account." = "Тексты и аудио хранятся на этом iPhone; настройка одна на всех устройствах с этой учётной записью iCloud.";
+/* Dictionary (2026-11-11). */
+"Word" = "Слово";
+"Add Word" = "Добавить слово";
+"Add Replacement" = "Добавить замену";

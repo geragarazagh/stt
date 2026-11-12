@@ -1,0 +1,33 @@
+"Settings" = "Параметри";
+"Send" = "Надіслати";
+"Text" = "Текст";
+"Audio" = "Аудіо";
+"History" = "Історія";
+"Off" = "Вимк.";
+"History comes with the Mac’s." = "Історія з’явиться разом з історією на Mac.";
+"OK" = "OK";
+"Add" = "Додати";
+"Names and terms written exactly as here." = "Назви й терміни будуть написані так, як тут.";
+"STT %@" = "STT %@";
+"Starts a recording, or stops it and gives its text." = "Починає запис або зупиняє його й віддає текст.";
+"No Text Yet" = "Тексту поки немає";
+"The text appears here after a recording." = "Текст з’явиться тут після запису.";
+"Copy Text" = "Копіювати текст";
+"The text goes to the clipboard as soon as it is ready." = "Текст потрапляє до буфера обміну, щойно готовий.";
+
+/* History (brief C, 2026-11-11). */
+"Recordings" = "Записи";
+"Select" = "Вибрати";
+"Deselect All" = "Зняти вибір";
+"More" = "Більше";
+"Every recording lands here as text." = "Кожен запис потрапляє сюди текстом.";
+"Delete Recording" = "Видалити запис";
+"Delete %lld Recordings" = "Видалити записи (%lld)";
+"Delete %lld recordings?" = "Видалити записи (%lld)?";
+"The audio and the text are deleted from this iPhone." = "Аудіо й текст буде видалено з цього iPhone.";
+"The audio of this recording is not on this iPhone." = "Аудіо цього запису немає на цьому iPhone.";
+"Texts and audio stay on this iPhone; the setting is the same on every device with this iCloud account." = "Тексти й аудіо зберігаються на цьому iPhone; параметр однаковий на всіх пристроях із цим обліковим записом iCloud.";
+/* Dictionary (2026-11-11). */
+"Word" = "Слово";
+"Add Word" = "Додати слово";
+"Add Replacement" = "Додати заміну";

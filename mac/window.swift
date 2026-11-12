@@ -126,7 +126,11 @@ final class AppIconView: NSImageView {
     let loginSwitch = NSSwitch()
     let status = NSTextField(labelWithString: "")
 
-    init(name: String, github: String, defaultShortcut: Shortcut, defaultCancel: Shortcut? = nil, above: NSView? = nil, extra: NSView? = nil, release: (() -> Void)? = nil, action: @escaping () -> Void) {
+    // Whether launching asked for a window (first launch, a key that failed, opened by hand). STT shows its main window
+    // then and this one only when it is needed (showsAtLaunch false); the apps whose only window this is show it.
+    var wantedAtLaunch = false
+
+    init(name: String, github: String, defaultShortcut: Shortcut, defaultCancel: Shortcut? = nil, above: NSView? = nil, extra: NSView? = nil, showsAtLaunch: Bool = true, release: (() -> Void)? = nil, action: @escaping () -> Void) {
         self.extra = extra
         self.above = above
         self.name = name
@@ -162,7 +166,8 @@ final class AppIconView: NSImageView {
         // The switch is in this window, which the first launch shows.
         let first = !d.bool(forKey: "launched")
         if first { d.set(true, forKey: "launched") }
-        if first || !registered || !CommandLine.arguments.contains("--background") { show() }
+        wantedAtLaunch = first || !registered || !CommandLine.arguments.contains("--background")
+        if wantedAtLaunch && showsAtLaunch { show() }
         if !registered { startRecording(); status.stringValue = L("This shortcut can’t be used") }
     }
 

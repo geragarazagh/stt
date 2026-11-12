@@ -23,8 +23,8 @@ import Security
 @MainActor final class Store {
     static let shared = Store()
 
-    // The history setting joins these when history exists (stt-iphone.md, brief C).
-    static let synced: Set<String> = ["language", "words", "replacements", "dictionaryChanged", "subtitles"]
+    // historyKeep since history (brief C): how much history a person keeps is about the person, like the language.
+    static let synced: Set<String> = ["language", "words", "replacements", "dictionaryChanged", "subtitles", "historyKeep"]
 
     // Posted on the main thread after values came from iCloud; userInfo["keys"]: [String].
     static let changedFromCloud = Notification.Name("STTStoreChangedFromCloud")
@@ -132,6 +132,7 @@ import Security
         case "replacements": return (v as? [[String]]).map { $0.count <= 5000 && $0.allSatisfy { $0.count == 2 && $0.allSatisfy { text($0, 200) } } } ?? false
         case "dictionaryChanged": return (v as? Date).map { $0.timeIntervalSince1970 < latest } ?? false
         case "subtitles": return v is Bool
+        case "historyKeep": return (v as? String).map { Keep($0).string == $0 } ?? false
         default: return false
         }
     }

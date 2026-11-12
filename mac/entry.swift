@@ -1,5 +1,7 @@
 // STT, speech to text: a hot key starts recording, the same key stops it, and the text lands in the app in front.
-// Offline: the only network call is downloading a model the user chose. No logs, no history.
+// Offline: the only network call is downloading a model the user chose. No logs. History (since brief C): every
+// dictation with its audio in one folder, Application Support/STT/History (shared/history.swift), shown in the main
+// window (main-window.swift); the small window of before is the Settings window.
 //
 // Test the whole pipeline without microphone or clipboard: STT.app/Contents/MacOS/STT some.wav (the command line, cli.swift).
 //
@@ -58,6 +60,17 @@ final class Recorder {
         engine.prepare()
         try engine.start()
         self.engine = engine
+    }
+
+    // How loud the last 50 ms were, 0...1 (decibels, -55..-5 dB, as the iPhone's wave), for the running wave.
+    func level() -> Float {
+        lock.lock(); defer { lock.unlock() }
+        let n = min(800, samples.count)
+        guard n > 0 else { return 0 }
+        var sum: Float = 0
+        for x in samples[(samples.count - n)...] { sum += x * x }
+        let db = 10 * log10(max(sum / Float(n), 1e-10))
+        return max(0, min(1, (db + 55) / 50))
     }
 
     func stop() -> [Float] {
@@ -139,6 +152,9 @@ func startKeyTap(_ handler: @escaping (Int, Int, Bool, Bool) -> Bool) -> Bool {
     var recording = false
     var pressedAt: Date?
     var window: AppWindow?
+    var main: MainWindow?
+    var levelTimer: Timer?
+    let keepPicker = NSPopUpButton(frame: .zero)
     let picker = NSPopUpButton(frame: .zero)
     let languagePicker = NSPopUpButton(frame: .zero)
     let note = NSTextField(labelWithString: "")
@@ -162,7 +178,7 @@ func startKeyTap(_ handler: @escaping (Int, Int, Bool, Bool) -> Bool) -> Bool {
         window = AppWindow(name: "STT", github: "https://github.com/geragarazagh/stt",
                            defaultShortcut: Shortcut(key: kVK_Space, mods: cmdKey | optionKey),
                            defaultCancel: Shortcut(key: kVK_Escape, mods: cmdKey), above: chooserRows(), extra: settingsRows(),
-                           release: { [weak self] in self?.released() }) { [weak self] in self?.pressed() }
+                           showsAtLaunch: false, release: { [weak self] in self?.released() }) { [weak self] in self?.pressed() }
         if let content = window?.panel.contentView {
             let drop = WindowDrop(frame: content.bounds)
             drop.autoresizingMask = [.width, .height]
@@ -177,7 +193,14 @@ func startKeyTap(_ handler: @escaping (Int, Int, Bool, Bool) -> Bool) -> Bool {
             let keys = n.userInfo?["keys"] as? [String] ?? []
             MainActor.assumeIsolated { self?.changedElsewhere(keys) }
         }
-        if let m = current { load(m) } else { window?.show() }
+        setUpShelf()
+        History.shared.purge()   // what the keep setting no longer allows, also after a change on another device
+        // No model: the Settings window, where the model is chosen. Otherwise the main window, unless STT started in the
+        // background (Open at Login) with nothing to say.
+        if let m = current {
+            load(m)
+            if window?.wantedAtLaunch == true { showMain(); demo() }
+        } else { window?.show() }
         if AXIsProcessTrusted() { tryTap() }
         control.toggle = { [weak self] in
             guard let self else { return "STT is not ready." }
@@ -259,7 +282,7 @@ func startKeyTap(_ handler: @escaping (Int, Int, Bool, Bool) -> Bool) -> Bool {
     }
 
     func applicationShouldHandleReopen(_ a: NSApplication, hasVisibleWindows: Bool) -> Bool {
-        window?.show()
+        if current == nil { window?.show() } else { showMain() }
         return false
     }
 
@@ -321,7 +344,8 @@ func startKeyTap(_ handler: @escaping (Int, Int, Bool, Bool) -> Bool) -> Bool {
     func settingsRows() -> NSView {
         let gap: CGFloat = 51, step: CGFloat = 30
         let pause = 18 - gap, mute = pause - step, paste = mute - gap, file = paste - gap, subtitles = file - step - 2, words = subtitles - gap - 2   // middles
-        let height = -words + 14   // the dictionary row's button is 28 tall and ends at the bottom edge
+        let history = words - gap
+        let height = -history + 14   // the history row's menu is 28 tall and ends at the bottom edge
         let row = NSView(frame: NSRect(x: 0, y: 0, width: 340, height: height))
         func label(_ s: String, _ y: CGFloat) {
             let l = NSTextField(labelWithString: s)
@@ -363,6 +387,13 @@ func startKeyTap(_ handler: @escaping (Int, Int, Bool, Bool) -> Bool) -> Bool {
         // The system's file chooser at once.
         action(L("Transcribe File"), chooseButton, L("Choose File…"), file, #selector(chooseFiles))
         action(L("Dictionary"), wordsButton, L("Edit…"), words, #selector(showDictionary))
+        // How much history is kept: a menu in the same column (synced, like the language).
+        label(L("History"), height + history - 9)
+        keepPicker.frame = NSRect(x: 340 - 20 - 160, y: height + history - 14, width: 160, height: 26)
+        keepPicker.target = self; keepPicker.action = #selector(pickedKeep)
+        keepPicker.refusesFirstResponder = true
+        row.addSubview(keepPicker)
+        rebuildKeep()
         return row
     }
 
@@ -388,7 +419,7 @@ func startKeyTap(_ handler: @escaping (Int, Int, Bool, Bool) -> Bool) -> Bool {
 
     // Cancelled, nothing else opens; chosen, the files window shows the work.
     @objc func chooseFiles() {
-        guard current != nil, let main = window?.panel else { return }
+        guard current != nil, let main = NSApp.keyWindow ?? window?.panel else { return }
         let p = NSOpenPanel()
         p.allowsMultipleSelection = true
         p.canChooseDirectories = false
@@ -411,6 +442,7 @@ func startKeyTap(_ handler: @escaping (Int, Int, Bool, Bool) -> Bool) -> Bool {
             if let s = switches[key] { s.view.state = isOn(key, s.standard) ? .on : .off }
         }
         if keys.contains("language") { rebuildLanguages() }
+        if keys.contains(Keep.key) { rebuildKeep(); History.shared.purge(); Shelf.shared.reload() }
         if keys.contains("words") || keys.contains("replacements") { passWords(); dictionary?.reload(elsewhere: true) }
     }
 
@@ -627,6 +659,7 @@ func startKeyTap(_ handler: @escaping (Int, Int, Bool, Bool) -> Bool) -> Bool {
             try recorder.start()
             recording = true
             pressedAt = Date()
+            showRecording()
         } catch {
             soundBack()
             report(L("Recording failed"), (error as NSError).domain == "STT" ? error.localizedDescription : "\(error)")
@@ -648,6 +681,8 @@ func startKeyTap(_ handler: @escaping (Int, Int, Bool, Bool) -> Bool) -> Bool {
         recording = false
         _ = recorder.stop()
         soundBack()
+        levelTimer?.invalidate()
+        Shelf.shared.phase = .idle
     }
 
     // The last word often ends as the key goes down, and the sound of it reaches the recorder a little later: 0.3 s more
@@ -658,6 +693,8 @@ func startKeyTap(_ handler: @escaping (Int, Int, Bool, Bool) -> Bool) -> Bool {
     func finish() {
         recording = false
         stopping = true
+        levelTimer?.invalidate()
+        Shelf.shared.stopped = Date(); Shelf.shared.phase = .transcribing
         DispatchQueue.main.asyncAfter(deadline: .now() + tailSeconds) { [self] in
             stopping = false
             let pcm = recorder.stop()
@@ -673,10 +710,18 @@ func startKeyTap(_ handler: @escaping (Int, Int, Bool, Bool) -> Bool) -> Bool {
             do {
                 let text = try engine.transcribe(pcm)
                 // A Stop Recording action gets what the clipboard got: nothing while a password field is active.
-                DispatchQueue.main.async { self.handOut(self.deliver(text) ? text : "") }
+                DispatchQueue.main.async {
+                    let delivered = self.deliver(text)
+                    self.handOut(delivered ? text : "")
+                    Shelf.shared.phase = .idle
+                    // Not kept when a password field withheld it: it may be a password said aloud.
+                    if delivered, let r = History.shared.add(text: text, samples: pcm, model: self.current?.id ?? "",
+                                                  language: UserDefaults.standard.string(forKey: "language")) { Shelf.shared.added(r) }
+                }
             } catch {
                 DispatchQueue.main.async {
                     self.handOut("")
+                    Shelf.shared.phase = .idle
                     let a = NSAlert()
                     a.messageText = L("Transcription failed")
                     a.informativeText = "\(error)"
@@ -868,6 +913,11 @@ func startKeyTap(_ handler: @escaping (Int, Int, Bool, Bool) -> Bool) -> Bool {
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
         guard pasteboard == .general, isOn("paste", true) else { return true }
+        // STT's main window in front (a recording started with its button, or the key pressed over it): ⌘V would land in
+        // the open recording's text. The text is in the history and on the clipboard. Its other windows take the paste
+        // like any app's (a word said into the Dictionary window, his case of 2026-11-11).
+        if NSWorkspace.shared.frontmostApplication?.processIdentifier == ProcessInfo.processInfo.processIdentifier,
+           let m = main?.window, NSApp.keyWindow === m { return true }
         guard AXIsProcessTrusted() else {
             settingsAlert(L("The text is on the clipboard. Pasting it needs Accessibility."), "Privacy_Accessibility")
             return true
