@@ -4,7 +4,7 @@
 set -e
 cd "${0:A:h}"
 # It changes per release, not per build.
-version=0.7.1 min=13.0 id=com.geragaraza.stt app=STT.app engine=0.4.1 name=STT
+version=0.8 min=13.0 id=com.geragaraza.stt app=STT.app engine=0.4.1 name=STT
 # A test copy beside the real one (TEST=1): its own id, name and folder, so it shares no settings, grants or history.
 [ -n "${TEST:-}" ] && { id=com.geragaraza.stt.test app="STT Test.app" name="STT Test"; }
 tmp=$(mktemp -d); trap 'rm -rf $tmp' EXIT
