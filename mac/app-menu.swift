@@ -22,6 +22,8 @@ extension App {
             m.closed = { [weak self] in
                 DispatchQueue.main.async { if self?.window?.panel.isVisible != true { NSApp.setActivationPolicy(.accessory) } }
             }
+            m.drop.accepts = { [weak self] in self?.current != nil }
+            m.drop.dropped = { [weak self] in self?.transcribeFiles($0) }
             main = m
         }
         main?.show()

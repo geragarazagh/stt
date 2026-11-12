@@ -60,6 +60,8 @@ import SwiftUI
 @MainActor final class MainWindow: NSObject, NSWindowDelegate {
     let window: NSWindow
     var closed: () -> Void = {}
+    // Audio or video dropped anywhere on the window is transcribed to a .txt beside it, as a drop on Settings does.
+    let drop = WindowDrop(frame: .zero)
 
     override init() {
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 820, height: 520),
@@ -67,13 +69,18 @@ import SwiftUI
         super.init()
         window.title = "STT"
         window.isReleasedWhenClosed = false
-        window.minSize = NSSize(width: 600, height: 380)
         window.toolbarStyle = .unified
         let host = NSHostingController(rootView: ShelfView().environmentObject(Shelf.shared))
-        // The window keeps the size it is given or the person's own; left to SwiftUI it shrank to the minimum (macOS 13).
-        host.sizingOptions = []
+        // The window keeps the size it is given or the person's own; SwiftUI sets only the smallest size, at which the
+        // list, the open text and the player all still fit (ShelfView's frame). With no minimum it could be dragged to
+        // nothing (his recording 2026-11-11 17:58: «меньше ты не будешь делать»); window.minSize alone was overridden
+        // by the hosting controller.
+        host.sizingOptions = [.minSize]
         window.contentViewController = host
         window.setContentSize(NSSize(width: 820, height: 520))   // the controller's view set it to the minimum on macOS 13
+        drop.frame = host.view.bounds
+        drop.autoresizingMask = [.width, .height]
+        host.view.addSubview(drop)
         window.delegate = self
         if !window.setFrameUsingName("STT") { window.center() }
         window.setFrameAutosaveName("STT")
@@ -172,6 +179,7 @@ struct ShelfView: View {
             }
             .navigationSplitViewColumnWidth(min: 240, ideal: 290, max: 420)
         } detail: {
+            Group {
             if picked.count == 1, let r = picked.first {
                 Detail(r: r, trash: inTrash, recover: { shelf.recover([r.objectID]); selection = [] }).id(r.objectID)
             } else if picked.count > 1 {
@@ -190,7 +198,11 @@ struct ShelfView: View {
             } else {
                 Empty(symbol: "text.alignleft", title: "No Recording Selected", text: "")
             }
+            }
+            // The player's three buttons, its times and the model's name in one row need this much.
+            .navigationSplitViewColumnWidth(min: 340, ideal: 480)
         }
+        .frame(minWidth: 640, minHeight: 440)
         .modifier(SearchInToolbar(text: $search))
         .toolbar {
             ToolbarItemGroup {

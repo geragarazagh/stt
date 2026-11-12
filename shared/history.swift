@@ -32,8 +32,10 @@ let historyFolder = appFolder.appendingPathComponent("History", isDirectory: tru
     @NSManaged var removed: Date?        // in Recently Deleted since then; nil = in the list («deleted» is NSManagedObject's own)
 
     // The audio, if this device has it.
+    // Only a name of the form <uuid>.m4a counts: the row may come from elsewhere one day (brief F syncs rows), and a
+    // name with a slash or «..» must never point outside the folder that erase() deletes from.
     var audioURL: URL? {
-        guard let audio else { return nil }
+        guard let audio, audio.hasSuffix(".m4a"), UUID(uuidString: String(audio.dropLast(4))) != nil else { return nil }
         let u = historyFolder.appendingPathComponent(audio)
         return FileManager.default.fileExists(atPath: u.path) ? u : nil
     }
