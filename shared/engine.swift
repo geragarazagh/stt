@@ -263,8 +263,24 @@ private let filler = try! NSRegularExpression(pattern: #"(?<![\p{L}\p{N}-])(?:"#
     + #")(?![\p{L}\p{N}-])[,.…]?"#, options: .caseInsensitive)
 private let englishFiller = try! NSRegularExpression(pattern: #"(?<![\p{L}\p{N}-])um+(?![\p{L}\p{N}-])[,.…]?"#, options: .caseInsensitive)
 
+// A model's text goes straight into another app (pasted, a Shortcuts result, a .txt). Nothing a voice says is a control
+// character: a newline, an escape or a direction change is the model's artefact, and pasted into a terminal a newline or
+// an escape sequence (one that ends bracketed paste) could run a command. They become a space; Unicode's format
+// characters that reorder text (bidi embedding, override, isolate) are dropped. Same rule as the synced dictionary.
+func printable(_ text: String) -> String {
+    var out = String.UnicodeScalarView()
+    for u in text.unicodeScalars {
+        switch u.value {
+        case 0..<0x20, 0x7F...0x9F: out.append(" ")
+        case 0x202A...0x202E, 0x2066...0x2069, 0x200E, 0x200F, 0x061C: continue
+        default: out.append(u)
+        }
+    }
+    return String(out)
+}
+
 func clean(_ text: String, language: String? = nil) -> String {
-    var s = text
+    var s = printable(text)
     for pattern in language == "en" ? [filler, englishFiller] : [filler] {
         // From the end, so the ranges before stay valid. A filler that closed a sentence leaves its full stop
         // («толщиной, м-м-м.» > «толщиной.»); one that opened a sentence hands its capital on («Ммм, да.» > «Да.»).
