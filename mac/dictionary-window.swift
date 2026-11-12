@@ -10,7 +10,7 @@ import AppKit
     let field = NSTokenField()
     let restore = NSButton(title: "", target: nil, action: nil)
     let note = NSTextField(wrappingLabelWithString: "")
-    let table = NSTableView()
+    let table = PairsTable()
     let plusMinus = NSSegmentedControl()
     let restorePairs = NSButton(title: "", target: nil, action: nil)
     var rows: [[String]] = []
@@ -73,6 +73,12 @@ import AppKit
             table.addTableColumn(c)
         }
         table.dataSource = self; table.delegate = self
+        // As macOS's Text Replacements: several rows at once (⌘A, Shift, ⌘-click), ⌫ removes them, ⌘C copies them as
+        // «heard<Tab>written» lines and ⌘V adds such lines as rows (a list from a note or another Mac in one go).
+        table.allowsMultipleSelection = true
+        table.remove = { [weak self] in self?.removeSelected() }
+        table.copyRows = { [weak self] in self?.copySelected() }
+        table.pasteRows = { [weak self] in self?.pasteRows() ?? false }
         table.usesAlternatingRowBackgroundColors = true
         table.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
         let tableScroll = NSScrollView(frame: NSRect(x: M, y: 48, width: W - 2 * M, height: H - 300 - 54))
@@ -205,12 +211,49 @@ import AppKit
             rows.append(["", ""])
             table.reloadData()
             table.editColumn(0, row: rows.count - 1, with: nil, select: true)
-        } else if table.selectedRow >= 0 {
-            panel.makeFirstResponder(nil)
-            rows.remove(at: table.selectedRow)
-            table.reloadData()
-            saveRows()
+        } else {
+            removeSelected()
         }
+    }
+
+    func removeSelected() {
+        let picked = table.selectedRowIndexes.filter { $0 < rows.count }
+        guard !picked.isEmpty else { return }
+        panel.makeFirstResponder(nil)
+        for i in picked.sorted(by: >) { rows.remove(at: i) }
+        table.reloadData()
+        saveRows()
+        panel.makeFirstResponder(table)
+    }
+
+    func copySelected() {
+        let lines = table.selectedRowIndexes.filter { $0 < rows.count }.map { rows[$0].joined(separator: "\t") }
+        guard !lines.isEmpty else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(lines.joined(separator: "\n"), forType: .string)
+    }
+
+    // Lines «heard<Tab>written» (also «heard → written», «heard = written»); false when the text holds none, so a
+    // plain word pasted over the table does nothing rather than make a half row.
+    func pasteRows() -> Bool {
+        guard let text = NSPasteboard.general.string(forType: .string) else { return false }
+        var added: [[String]] = []
+        for line in text.components(separatedBy: .newlines) {
+            for sep in ["\t", " → ", " -> ", " = "] where line.contains(sep) {
+                let parts = line.components(separatedBy: sep).map { $0.trimmingCharacters(in: .whitespaces) }
+                if parts.count == 2, !parts[0].isEmpty, !parts[1].isEmpty { added.append(parts) }
+                break
+            }
+        }
+        guard !added.isEmpty else { return false }
+        panel.makeFirstResponder(nil)
+        rows += added
+        table.reloadData()
+        saveRows()
+        table.selectRowIndexes(IndexSet((rows.count - added.count)..<rows.count), byExtendingSelection: false)
+        table.scrollRowToVisible(rows.count - 1)
+        panel.makeFirstResponder(table)
+        return true
     }
 
     func saveRows() {
@@ -228,5 +271,26 @@ import AppKit
         f.lineBreakMode = .byTruncatingTail
         f.delegate = self
         return f
+    }
+}
+
+// The replacements table: ⌫ and Delete remove the selected rows, ⌘C and ⌘V work on whole rows (Edit menu, app-menu.swift).
+final class PairsTable: NSTableView {
+    var remove: () -> Void = {}
+    var copyRows: () -> Void = {}
+    var pasteRows: () -> Bool = { false }
+    override func keyDown(with e: NSEvent) {
+        if [51, 117].contains(Int(e.keyCode)), e.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting(.function).isEmpty { remove(); return }
+        super.keyDown(with: e)
+    }
+    @objc func delete(_ sender: Any?) { remove() }
+    @objc func copy(_ sender: Any?) { copyRows() }
+    @objc func paste(_ sender: Any?) { if !pasteRows() { NSSound.beep() } }
+    override func validateUserInterfaceItem(_ item: NSValidatedUserInterfaceItem) -> Bool {
+        switch item.action {
+        case #selector(delete(_:)), #selector(copy(_:)): return selectedRow >= 0
+        case #selector(paste(_:)): return NSPasteboard.general.string(forType: .string) != nil
+        default: return super.validateUserInterfaceItem(item)
+        }
     }
 }
