@@ -1,0 +1,32 @@
+#!/bin/zsh
+# Makes STT.xcodeproj for the iPhone app: the strings (the Mac's ../mac/lang plus the iPhone's own lang/, one home for
+# each word), the icon (the Mac's icon.swift, the same wave), then XcodeGen. Build with xcodebuild or Xcode after it.
+set -e
+cd "${0:A:h}"
+rm -rf gen/loc gen/AppIcon.icon; mkdir -p gen/loc/en.lproj
+for l in ru uk; do
+  mkdir -p gen/loc/$l.lproj
+  cat ../mac/lang/$l.strings lang/$l.strings > gen/loc/$l.lproj/Localizable.strings
+  cp lang/$l.InfoPlist.strings gen/loc/$l.lproj/InfoPlist.strings
+  cp lang/$l.AppShortcuts.strings gen/loc/$l.lproj/AppShortcuts.strings   # Siri and Shortcuts phrases
+done
+printf '"NSMicrophoneUsageDescription" = "Speech is turned into text on this iPhone and goes nowhere.";\n' > gen/loc/en.lproj/InfoPlist.strings
+# English keys are the English text; an empty table keeps en listed as a localization.
+echo "/* English keys are the text itself. */" > gen/loc/en.lproj/Localizable.strings
+for f in gen/loc/*/*.strings; do plutil -lint -s $f; done
+# The icon: the Mac's picture and plate (build, «App icon»), for iOS.
+[ gen/icon -nt ../mac/icon.swift ] || swiftc -O -o gen/icon ../mac/icon.swift
+mkdir -p gen/AppIcon.icon/Assets
+gen/icon gen/AppIcon.icon/Assets gen/wave.svg
+cat > gen/AppIcon.icon/icon.json <<'JSON'
+{
+  "fill" : "system-light",
+  "fill-specializations" : [ { "appearance" : "dark", "value" : "system-dark" } ],
+  "groups" : [ { "layers" : [ { "name" : "picture", "glass" : false,
+    "image-name-specializations" : [ { "value" : "light.png" }, { "appearance" : "dark", "value" : "dark.png" } ] } ],
+    "shadow" : { "kind" : "none", "opacity" : 0.5 }, "translucency" : { "enabled" : false, "value" : 0.5 } } ],
+  "supported-platforms" : { "squares" : "shared" }
+}
+JSON
+python3 symbol.py   # STT's own record sign (Symbols.xcassets)
+xcodegen generate --quiet

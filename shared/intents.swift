@@ -1,4 +1,4 @@
-// Shortcuts actions: Record, Start Recording, Stop Recording, Transcribe File; the same four on the Mac and the iPhone
+// Shortcuts actions: Record, Start Recording, Stop Recording on the Mac and the iPhone; Transcribe File on the Mac only
 // (0.5 had the last three; Record came in 0.6 for the iPhone's Action Button, which runs one action per press).
 // - Record is a press of STT's key: it starts a recording, or stops the one going and gives its text.
 // - Start and Stop act exactly as the app's key does: the same recording, paste and clipboard, the same switches. Stop
@@ -18,7 +18,9 @@ import Foundation
     func startFromOutside() -> LocalizedStringResource?
     func stopFromOutside() async -> String
     var isRecording: Bool { get }
+    #if os(macOS)
     func transcribeForShortcut(_ url: URL) async -> Result<String, Error>
+    #endif
 }
 
 @MainActor weak var host: RecordingHost?
@@ -31,14 +33,24 @@ struct Record: AppIntent {
     static let title: LocalizedStringResource = "Record"
     static let description = IntentDescription("Starts a recording, or stops it and gives its text, as a press of the key of STT does.")
     #if os(iOS)
-    static let openAppWhenRun = true    // recording needs the app in front there (stt-iphone.md, «Measured»)
+    // Recording needs the app in front there (stt-iphone.md, «Measured»); iOS 26's way of saying so (brief D).
+    static let supportedModes: IntentModes = .foreground(.immediate)
     #else
     static let openAppWhenRun = false   // on the Mac it never comes forward
     #endif
 
     @MainActor func perform() async throws -> some IntentResult & ReturnsValue<String> {
         guard let app = host else { throw STTError(localizedStringResource: "STT is not ready yet.") }
-        if app.isRecording { return .result(value: await app.stopFromOutside()) }
+        if app.isRecording {
+            #if os(iOS)
+            // The Action Button's run ends at once; the text is made after it and lands as usual. Waiting for Whisper
+            // (5-14 s) kept the system's run open that long (2026-11-11, the button went dead for every action).
+            Task { _ = await app.stopFromOutside() }
+            return .result(value: "")
+            #else
+            return .result(value: await app.stopFromOutside())
+            #endif
+        }
         if let problem = app.startFromOutside() { throw STTError(localizedStringResource: problem) }
         return .result(value: "")
     }
@@ -48,7 +60,8 @@ struct StartRecording: AppIntent {
     static let title: LocalizedStringResource = "Start Recording"
     static let description = IntentDescription("Starts a recording, as the key of STT does.")
     #if os(iOS)
-    static let openAppWhenRun = true    // recording needs the app in front there (stt-iphone.md, «Measured»)
+    // Recording needs the app in front there (stt-iphone.md, «Measured»); iOS 26's way of saying so (brief D).
+    static let supportedModes: IntentModes = .foreground(.immediate)
     #else
     static let openAppWhenRun = false   // on the Mac it never comes forward
     #endif
@@ -71,6 +84,8 @@ struct StopRecording: AppIntent {
     }
 }
 
+// Files are the Mac's: on the iPhone transcribing files was dropped (his word 2026-11-11 12:10, stt-iphone.md «Rejected»).
+#if os(macOS)
 struct TranscribeFile: AppIntent {
     static let title: LocalizedStringResource = "Transcribe File"
     static let description = IntentDescription("Turns speech in an audio or video file into text.")
@@ -97,3 +112,10 @@ struct TranscribeFile: AppIntent {
         }
     }
 }
+#endif
+
+#if os(iOS)
+// The Live Activity's Stop button: a Live Activity intent runs in the app's own process, where the recording is, and
+// the app stays where it is.
+extension StopRecording: LiveActivityIntent {}
+#endif

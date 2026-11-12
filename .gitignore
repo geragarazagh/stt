@@ -6,3 +6,10 @@ vendor/Sparkle.framework
 .release
 appcast.xml
 STT.provisionprofile
+vendor/TranscribeCpp.xcframework
+ios/gen
+ios/*.xcodeproj
+ios/build
+
+# The test copy (build TEST=1)
+STT Test.app/
