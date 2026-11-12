@@ -1,11 +1,12 @@
 // The one screen, in the form of Voice Memos on iOS 27 (his choice 2026-11-11 13:05, stt-iphone.md): since history
-// (his choice 15:02, stt.md «Decisions») the list of every dictation (HistoryList.swift), Apple's record control at the
-// bottom, and while recording a card that rises from the bottom with the
-// timer, the running wave, Cancel and Stop. The card is a system sheet, so it moves, dims what is behind it and adapts
-// to the iPhone Duo as every Apple sheet does; nothing here animates by hand except the wave and the timer.
-// The moves, all the system's own springs: Record dims the button and the card rises; Stop freezes the timer and the
-// wave, which greys while the text is made, a spinner in the ring; the card goes down and the text lands as the first
-// row of the list, opened. Cancel lowers the card and leaves the screen as it was.
+// (his choice 15:02, stt.md «Decisions») the list of every dictation (HistoryList.swift) and Apple's record control
+// floating over its bottom. Recording, the control itself grows into a card, as in Voice Memos (his 11:20 video of
+// 2026-11-12, read frame by frame at 30 fps): the red dot darkens and widens into a panel 8 pt from the screen's sides
+// and bottom with corners concentric to the screen's, the list behind fades, then the timer, the running wave, Cancel
+// and Stop appear on it. Stop keeps the card while the text is made (a spinner in the ring), then the card shrinks back
+// into the dot with a little spring and the text lands as the first row, opened. Cancel shrinks it at once.
+// Until then the card was a system sheet that slid up over the dot, and the button sat in a bottom bar whose scroll
+// edge effect drew a dark band over the list's end (his «чёрная полоса»); the list now runs under the control.
 import SwiftUI
 
 struct MainView: View {
@@ -24,14 +25,7 @@ struct MainView: View {
                 }
             }
             .navigationTitle(d.current == nil && Shelf.shared.items.isEmpty ? "" : String(localized: "Recordings"))
-            .safeAreaBar(edge: .bottom) {
-                if d.current != nil && editMode == .inactive && !Shelf.shared.editingText {
-                    RecordRing(active: false)
-                        .opacity(d.phase == .idle ? 1 : 0)   // under the card it would show through the glass as a red smudge
-                        .animation(.smooth, value: d.phase)
-                        .padding(.bottom, 8)
-                }
-            }
+            .contentMargins(.bottom, 96, for: .scrollContent)   // the last row can scroll above the control
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button { settings = true } label: { Label("Settings", systemImage: "gearshape") }
@@ -43,12 +37,6 @@ struct MainView: View {
                 }
             }
             .sheet(isPresented: $settings) { SettingsView() }
-            .sheet(isPresented: Binding(get: { d.phase != .idle }, set: { _ in })) {
-                RecordingCard()
-                    .presentationDetents([.height(340)])
-                    .presentationDragIndicator(.visible)
-                    .interactiveDismissDisabled()
-            }
             .onChange(of: d.phase) { _, p in if p != .idle { settings = false; editMode = .inactive } }
             .alert(d.problem ?? "", isPresented: Binding(get: { d.problem != nil && d.phase == .idle }, set: { if !$0 { d.problem = nil } })) {
                 Button("OK", role: .cancel) {}
@@ -57,32 +45,100 @@ struct MainView: View {
             .onAppear { if Demo.sheet != nil { settings = true } }
             #endif
         }
+        // Over the navigation bar too: Voice Memos fades its title with the list.
+        .overlay { if d.phase != .idle { Color(.systemBackground).opacity(0.55).ignoresSafeArea().transition(.opacity) } }
+        .overlay(alignment: .bottom) {
+            if d.current != nil && editMode == .inactive && !Shelf.shared.editingText { Recorder() }
+        }
+        .animation(morph, value: d.phase != .idle)
     }
 }
 
-// The card while recording and while the text is made. Cancel sits where every Apple sheet keeps it, the top leading
-// corner (iOS draws it as the round glass ✕), so the bottom holds only Stop, centred, as in Voice Memos: his 13:25 look
-// found Cancel and Stop side by side «сбито» left and right.
+// Open and close: one spring for the shape, measured against Voice Memos (about a third of a second, a small overshoot
+// on the way back into the dot).
+let morph = Animation.spring(duration: 0.38, bounce: 0.18)
+
+// Apple's record control and the card it becomes: one shape, so the press looks like the button growing. Sizes measured
+// on Voice Memos in his video (a 3x screen): the red dot 51 pt, a 3 pt grey ring 59 pt across, its centre 64 pt above
+// the screen's bottom; the card 8 pt from the sides and the bottom, 276 pt high.
+struct Recorder: View {
+    private var d: Dictation { Dictation.shared }
+    private var open: Bool { d.phase != .idle }
+    @State private var red = 1.0   // the dot's red over the card's grey
+    var body: some View {
+        GeometryReader { geo in
+            let lift = max(geo.safeAreaInsets.bottom, 8) + 4   // the dot's bottom: the home indicator's line
+            ZStack(alignment: .bottom) {
+                // The ring of the idle control, around the dot; it goes when the dot grows.
+                Circle().strokeBorder(Color(.systemGray3), lineWidth: 3)
+                    .frame(width: 59, height: 59)
+                    .padding(.bottom, lift - 4)
+                    .opacity(open ? 0 : 1)
+                // The dot that becomes the card: concentric corners never under the dot's own radius.
+                // The colour changes in its own transaction (onChange below): an animation set on the shape would carry
+                // its size with it, and closing grew back into a big red square for a moment.
+                ZStack {
+                    ConcentricRectangle(corners: .concentric(minimum: .fixed(25.5)), isUniform: true)
+                        .fill(Color(.tertiarySystemBackground))
+                    ConcentricRectangle(corners: .concentric(minimum: .fixed(25.5)), isUniform: true)
+                        .fill(Color.red.opacity(red))
+                }
+                    .frame(width: open ? geo.size.width - 16 : 51, height: open ? 276 : 51)
+                    .padding(.bottom, open ? 8 : lift)
+                    .shadow(color: .black.opacity(open ? 0.25 : 0), radius: 20, y: 4)
+                if open {
+                    RecordingCard()
+                        .frame(width: geo.size.width - 16, height: 276)
+                        .padding(.bottom, 8)
+                        .transition(.asymmetric(insertion: .opacity.animation(.easeIn(duration: 0.18).delay(0.12)),
+                                                removal: .opacity.animation(.easeOut(duration: 0.08))))
+                }
+            }
+            .frame(width: geo.size.width, height: geo.size.height, alignment: .bottom)
+            .allowsHitTesting(open)   // idle, only the dot's own button below takes a touch; the list stays scrollable
+            .ignoresSafeArea(edges: .bottom)
+        }
+        // Voice Memos' dot darkens first, then grows; closing, the card shrinks dark and reddens at the end.
+        // Already recording when the screen appears (the Action Button's cold start): grey from the first frame.
+        .onAppear { red = open ? 0 : 1 }
+        .onChange(of: open) { _, o in
+            withAnimation(o ? .easeOut(duration: 0.12) : .easeIn(duration: 0.2).delay(0.14)) { red = o ? 0 : 1 }
+        }
+        .overlay(alignment: .bottom) {
+            // The idle control's own button: the dot and its ring, nothing else of the screen.
+            if !open {
+                Button { toggle() } label: { Color.clear.frame(width: 64, height: 64).contentShape(Circle()) }
+                    .buttonStyle(.plain)
+                    .padding(.bottom, 2)
+                    .accessibilityLabel(Text("Record"))
+            }
+        }
+    }
+}
+
+// What the card holds while recording and while the text is made: Cancel in the top leading corner as the system's
+// round ✕ (where every Apple sheet keeps it; his 13:25 look found Cancel and Stop side by side «сбито»), the clock, the
+// running wave and Stop, centred at the bottom as in Voice Memos. Cancel stays, only off while the text is made.
 struct RecordingCard: View {
     private var d: Dictation { Dictation.shared }
     var body: some View {
-        NavigationStack {
-            VStack(spacing: 18) {
-                Clock(started: d.started, stopped: d.stopped)
-                RunningWave(history: d.history, started: d.started, stopped: d.stopped)
-                    .frame(height: 96)
-                RecordRing(active: true)
-                Spacer(minLength: 0)
+        VStack(spacing: 14) {
+            Clock(started: d.started, stopped: d.stopped)
+                .padding(.top, 22)
+            RunningWave(history: d.history, started: d.started, stopped: d.stopped)
+                .frame(height: 96)
+            RecordRing(active: true)
+            Spacer(minLength: 0)
+        }
+        .overlay(alignment: .topLeading) {
+            Button(role: .cancel) { Task { await d.cancel() } } label: {
+                Label("Cancel", systemImage: "xmark").labelStyle(.iconOnly).font(.body.weight(.semibold))
+                    .frame(width: 36, height: 36)
             }
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    // Always there, only off while the text is made: a bar that loses its one item collapses and the
-                    // timer under it jumps up.
-                    Button(role: .cancel) { Task { await d.cancel() } } label: { Label("Cancel", systemImage: "xmark") }
-                        .disabled(d.phase != .recording)
-                }
-            }
-            .toolbarBackgroundVisibility(.hidden, for: .navigationBar)
+            .buttonStyle(.glass)
+            .buttonBorderShape(.circle)
+            .disabled(d.phase != .recording)
+            .padding(14)
         }
         .animation(.smooth, value: d.phase)
     }
@@ -104,9 +160,8 @@ struct Clock: View {
     }
 }
 
-// Apple's record control: a ring, and inside it a red dot that becomes a red square while recording; a spinner in the
-// ring while the text is made. The same control at the bottom of the screen and on the card, so the press looks like
-// one button changing.
+// Stop on the card: Apple's ring with the red square of a recording in it (Voice Memos' sizes, 59 pt), a spinner in the
+// ring while the text is made. The idle control at the bottom of the screen is the Recorder's own dot and ring.
 struct RecordRing: View {
     var active: Bool   // on the card
     private var d: Dictation { Dictation.shared }
@@ -114,17 +169,17 @@ struct RecordRing: View {
     var body: some View {
         Button { toggle() } label: {
             ZStack {
-                Circle().strokeBorder(Color(.systemGray3), lineWidth: 4)
+                Circle().strokeBorder(Color(.systemGray3), lineWidth: 3)
                 if active && d.phase == .transcribing {
                     ProgressView().controlSize(.large).transition(.opacity)
                 } else {
-                    RoundedRectangle(cornerRadius: recording ? 8 : 31, style: .continuous)
+                    RoundedRectangle(cornerRadius: recording ? 7 : 25.5, style: .continuous)
                         .fill(.red)
-                        .frame(width: recording ? 30 : 62, height: recording ? 30 : 62)
+                        .frame(width: recording ? 24 : 51, height: recording ? 24 : 51)
                         .transition(.opacity)
                 }
             }
-            .frame(width: 76, height: 76)
+            .frame(width: 59, height: 59)
             .animation(.snappy(duration: 0.3), value: d.phase)
         }
         .buttonStyle(.plain)

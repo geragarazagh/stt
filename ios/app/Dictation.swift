@@ -13,6 +13,9 @@ import WidgetKit
 import AVFoundation
 import Observation
 import UIKit
+// Opening and closing the audio session, one after another: a session closed behind a Cancel must not close the next
+// recording's session.
+private let audioQueue = DispatchQueue(label: "com.geragaraza.stt.audio")
 
 // Models on the iPhone: Whisper and Parakeet, on every iPhone with iOS 26; Qwen stays on the Mac (his word 2026-11-11).
 let phoneModels = models.filter { $0.id != "Qwen3-ASR-1.7B" }
@@ -82,8 +85,11 @@ let phoneModels = models.filter { $0.id != "Qwen3-ASR-1.7B" }
             let s = AVAudioSession.sharedInstance()
             // Other sound pauses while recording and comes back after, as in Voice Memos; no Bluetooth headset as the
             // microphone, so the headphones keep their sound (the Mac's choice, stt.md).
-            try s.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker])
-            try s.setActive(true)
+            // On the audio queue: a Cancel just before may still be closing the session there (cleanUpMic).
+            try audioQueue.sync {
+                try s.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker])
+                try s.setActive(true)
+            }
             let e = AVAudioEngine()
             let input = e.inputNode
             let inFormat = input.outputFormat(forBus: 0)
@@ -161,9 +167,12 @@ let phoneModels = models.filter { $0.id != "Qwen3-ASR-1.7B" }
     }
 
     // Cancel throws the recording away, as the Mac's Cancel Recording key does: no text, the last text stays.
+    // The card goes at once and the clock stops at the press (his 11:20 video: the clock ran on 0.4 s and the card
+    // waited, because closing the microphone held the main thread); the microphone closes behind it, off the main thread.
     func cancel() async {
         guard phase == .recording else { return }
-        cleanUpMic()
+        stopped = Date(); phase = .idle
+        cleanUpMic(behind: true)
         UserDefaults.standard.removeObject(forKey: "recordingOpen")
         await endActivity()
         samples = []
@@ -179,11 +188,17 @@ let phoneModels = models.filter { $0.id != "Qwen3-ASR-1.7B" }
         do { try await x.export(to: m4a, as: .m4a); return m4a } catch { trace("m4a failed \(error)"); return caf }
     }
 
-    private func cleanUpMic() {
-        mic?.inputNode.removeTap(onBus: 0); mic?.stop(); mic = nil
-        file = nil   // closes the file
-        do { try AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation); trace("audio session off") }
-        catch { trace("audio session off failed \(error)") }
+    // behind: the engine stops and the session closes on the audio queue, after the screen has moved on (Cancel, where
+    // nothing waits for the file). Stop closes them here, since the text is made from what they finished writing.
+    private func cleanUpMic(behind: Bool = false) {
+        let m = mic; mic = nil
+        file = nil   // closes the file (the tap's own reference goes with the engine)
+        let close = {
+            m?.inputNode.removeTap(onBus: 0); m?.stop()
+            do { try AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation); trace("audio session off") }
+            catch { trace("audio session off failed \(error)") }
+        }
+        if behind { audioQueue.async(execute: close) } else { audioQueue.sync(execute: close) }
         UIApplication.shared.isIdleTimerDisabled = false
         levels = Array(repeating: 0, count: 11)
         if phase == .recording { phase = .idle }

@@ -59,7 +59,11 @@ enum Demo {
                 try? await Task.sleep(for: .seconds(5))
                 t.invalidate(); d.stopped = Date(); d.phase = .transcribing
                 try? await Task.sleep(for: .seconds(2.5))
-                d.text = sample; d.phase = .idle
+                // As a real dictation ends: the text becomes the first row of the history, opened (Dictation.finish).
+                d.text = sample
+                if let r = History.shared.add(text: sample, samples: [Float](repeating: 0, count: 16000 * 5), model: d.current?.id ?? "",
+                                              language: nil) { Shelf.shared.added(r) }
+                d.phase = .idle
             }
         case "island":
             // A Live Activity with a still wave, for the shots of the island (the app then goes to the background).
