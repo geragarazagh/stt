@@ -48,6 +48,14 @@ final class Engine: @unchecked Sendable {
     // The dictionary, copied in on the engine's queue: own words, then the built-in ones still kept, and the replacements.
     var ownWords: [String] = [], builtIn: [String] = [], pairs: [(heard: String, written: String)] = []
 
+    // transcribe.cpp ships Whisper's own fallback on (temperature_inc 0.2): a piece that fails its compression or
+    // log-probability check is decoded again at 0.2, 0.4 ... 1.0, and when every tier fails the last one is kept. The low
+    // tiers help (on 199 of his dictations, turning it off lost spoken words in 4: «просто, да, вот» became «просто»),
+    // but at 0.8 and 1.0 Whisper samples nearly at random: that is where words of five languages glued together, Korean
+    // and Chinese characters and a run of «ээээ» came from in a 2:32 dictation on his iPhone (2026-11-12; the same sound
+    // on the Mac came out clean). So the first run keeps the library's fallback, and a piece that comes back garbled
+    // (garbled() below) is decoded again with it off (temperatureInc 0) at 0, 0.2 and 0.4 only.
+    //
     // Whisper: the words, an example of punctuation (without one it often writes long runs of speech with none at all),
     // and the end of the text so far, which keeps the grammar going across a cut. Qwen: the words in its system message.
     private func options(_ code: String?, after text: String) -> RunOptions {
@@ -125,13 +133,17 @@ final class Engine: @unchecked Sendable {
             // decode; it brought back 3 of the 20, the plain rerun others). Another run's text is taken only when it is twice
             // as long and 20 letters longer, so a shorter honest answer never loses to an invented tail. Three letters a
             // second is a third of slow speech, and pauses are already cut.
-            if isWhisper, piece.count >= 3 * 16000, collapsed(run.text, seconds: Double(piece.count) / 16000) {
-                let calm = RunOptions(language: forced), warm = RunOptions(language: forced,
-                    family: .whisper(WhisperRunOptions(temperature: 0.2, seed: 1)))
-                for o in [calm, warm] {
+            // A garbled piece (garbled() below) goes the same way, with one more tier at 0.4; a rerun that reads as
+            // speech replaces it whatever its length.
+            let seconds = Double(piece.count) / 16000, said = forced ?? run.language ?? language
+            if isWhisper, piece.count >= 3 * 16000, collapsed(run.text, seconds: seconds) || garbled(run.text, language: said) {
+                let tier = { (t: Float?) in RunOptions(language: self.forced, family: .whisper(WhisperRunOptions(
+                    temperature: t, temperatureInc: 0, seed: t == nil ? nil : 1))) }
+                for o in [tier(nil), tier(0.2), tier(0.4)] {
                     let again = try session.run(piece, options: o)
-                    if !looped(again.text), looped(run.text) || again.text.count >= max(2 * run.text.count, run.text.count + 20) { run = again }
-                    if !collapsed(run.text, seconds: Double(piece.count) / 16000) { break }
+                    let broken = garbled(run.text, language: said), clean = !looped(again.text) && !garbled(again.text, language: said)
+                    if clean, broken || looped(run.text) || again.text.count >= max(2 * run.text.count, run.text.count + 20) { run = again }
+                    if !collapsed(run.text, seconds: seconds), !garbled(run.text, language: said) { break }
                 }
             }
             spoken = forced ?? run.language ?? language ?? spoken
@@ -180,6 +192,20 @@ final class Engine: @unchecked Sendable {
         repeats.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) != nil
     }
 
+    // Text that is not speech: one letter twelve times running («ээээээээээээ»; Whisper writes a person's long «э» with
+    // nine at most, «Эээээээээ, охуенно»), a Russian word that ends in Latin letters («впринялetti», «международыmus»)
+    // twice in a piece (a Latin name with a Russian ending, «GitHubе», «MacBookа», is the other way round and stays), or
+    // letters of a script the piece's language doesn't use (Korean, Chinese, Japanese, Thai, Arabic, Hebrew, Devanagari
+    // in Russian speech). Measured 2026-11-12 on the 28 345 texts of every model and test set kept on his Mac (his
+    // dictations, FLEURS, VoxPopuli): 11 flagged, every one of them broken.
+    func garbled(_ text: String, language: String?) -> Bool {
+        let all = NSRange(text.startIndex..., in: text)
+        if letterRun.firstMatch(in: text, range: all) != nil { return true }
+        if glued.numberOfMatches(in: text, range: all) >= 2 { return true }
+        guard let language else { return false }
+        return foreignScripts.contains { own, re in !own.contains(language) && re.firstMatch(in: text, range: all) != nil }
+    }
+
     // A stretch of speech inside a piece: where it starts in the piece, where it came from in the sound, how long it is.
     typealias Stretch = (at: Int, from: Int, count: Int)
 
@@ -220,6 +246,15 @@ func srt(_ cues: [Cue]) -> String {
     return cues.enumerated().map { "\($0.offset + 1)\n\(time($0.element.start)) --> \(time($0.element.end))\n\($0.element.text)\n" }
         .joined(separator: "\n")
 }
+
+private let letterRun = try! NSRegularExpression(pattern: #"(\p{L})\1{11,}"#)
+private let glued = try! NSRegularExpression(pattern: #"[\p{Cyrillic}&&\p{Ll}]{3,}[\p{Latin}&&\p{Ll}]{2,}(?!\p{L})"#)
+// Each script with the languages (Whisper's codes) that write in it.
+private let foreignScripts: [(Set<String>, NSRegularExpression)] = [
+    (["zh", "yue", "ja"], #"\p{Han}"#), (["ja"], #"[\p{Hiragana}\p{Katakana}]"#), (["ko"], #"\p{Hangul}"#), (["th"], #"\p{Thai}"#),
+    (["ar", "fa", "ur", "ps", "sd", "ug"], #"\p{Arabic}"#), (["he", "yi"], #"\p{Hebrew}"#),
+    (["hi", "mr", "ne", "sa"], #"\p{Devanagari}"#),
+].map { ($0.0, try! NSRegularExpression(pattern: $0.1)) }
 
 private let repeats = try! NSRegularExpression(pattern: #"(?<!\w)((?:\w+[,.!?…]?\s+){0,4}\w+)(?:[,.!?…]?\s+\1(?!\w)){3,}"#,
                                                options: .caseInsensitive)
