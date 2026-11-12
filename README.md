@@ -10,7 +10,7 @@ Apple silicon, macOS 13 or later. Interface in English, Ukrainian and Russian. S
 
 ## Install
 
-Download `STT.dmg` from [Releases](https://github.com/geragarazagh/stt/releases/latest), open it and drag `STT.app` to Applications. Later versions arrive through Check for Updates.
+**Mac** (Apple silicon, macOS 13 or later): download [`STT.dmg`](https://github.com/geragarazagh/stt/releases/latest/download/STT.dmg) (4.4 MB), open it and drag `STT.app` to Applications. Later versions arrive through Check for Updates.
 
 Or with [Homebrew](https://brew.sh):
 
