@@ -6,7 +6,7 @@ Free, open source speech to text app for macOS. Press a keyboard shortcut in any
 
 Apple silicon, macOS 13 or later. Interface in English, Ukrainian and Russian. Signed with a Developer ID and notarized by Apple.
 
-![STT in use: Leo Tolstoy's phonograph recordings of 1908-1909 in Russian, French, English and German, transcribed through Open With, a .txt beside each in Finder, and the letter he dictated on 9 April 1908 in TextEdit as STT heard it, unedited, dark appearance](docs/scene.webp)
+![STT in use: Leo Tolstoy's phonograph recordings of 1908-1909 in Russian, French, English and German in STT's history, the letter he dictated on 9 April 1908 open as STT heard it, unedited, the player at 0:33, where «смертной казни» (the death penalty) is heard as «смерти металли», and Settings beside it, dark appearance](docs/scene.webp)
 
 ## Install
 
@@ -20,23 +20,27 @@ brew install geragarazagh/tap/stt
 
 ## Use
 
-Option-Command-Space starts and stops a recording. Hold it longer than half a second and letting go stops it. Command-Esc cancels. The only sign of a recording is macOS’s orange microphone dot.
+Option-Command-Space starts and stops a recording. Hold it longer than half a second and letting go stops it. Command-Esc cancels. With the window closed, the only sign of a recording is macOS’s orange microphone dot; in the window the recording shows under the list with its time and waveform.
 
 After the first model, macOS asks for Microphone, then Accessibility.
 
-The window has Check for Updates; Model and Language (Automatic or one language); Recording and Cancel Recording; Open at Login; Pause Media and Mute Sound; Paste Text; Transcribe File with Choose File…; Save Subtitles (.srt); Dictionary with Edit…; Quit. Open at Login stays off until it is turned on. Opening the app shows its window. Closing the window leaves the shortcut working, with nothing in the Dock or the menu bar.
+The window is the list of dictations, newest first: each keeps its text, which can be edited in place, and its audio, which can be played. Search goes through the texts; Copy Text, Share (the text or the audio), Transcribe Again with another model and Show in Finder are on the right click; Delete moves recordings to Recently Deleted for 30 days. Several are chosen with Command-A, Shift or Command-click. The record button under the list starts and stops a recording as the shortcut does, and a recording made there is not pasted into the window. Settings (Command-comma) has Check for Updates; Model and Language (Automatic or one language); Recording and Cancel Recording; Open at Login; Pause Media and Mute Sound; Paste Text; Transcribe File with Choose File…; Save Subtitles (.srt); Dictionary with Edit…; History; Quit. Open at Login stays off until it is turned on. Opening the app shows its window. While the window is open, STT is in the Dock and the menu bar like any app; closing the window leaves the shortcut working, with nothing in the Dock or the menu bar.
 
 ## For advanced users and language models
 
-Recognition runs on the Mac with an open model of choice: Whisper, Parakeet or Qwen. The network is used only to download that model and to check for updates; language, dictionary and the subtitles switch also go through iCloud to the other Macs of the same account. A recording lives in memory only. No history, no logs, no account of its own.
+Recognition runs on the Mac with an open model of choice: Whisper, Parakeet or Qwen. The network is used only to download that model and to check for updates; language, dictionary, the subtitles switch and the history setting also go through iCloud to the other Macs of the same account. Each recording is kept with its text on the Mac (History, below). No logs, no account of its own.
 
-Audio and video files: Choose File… in the window, a drop anywhere on the window, or Open With → STT in Finder. The text is saved beside the file as a `.txt` with the same name (`Interview.m4a` gives `Interview.txt`; an existing file is never overwritten, the new one is `Interview (2).txt`) and copied to the clipboard; it is not pasted. A small window shows the progress with Cancel, then the name of the `.txt`, which shows it in Finder when clicked. Several files go one after another, each to its own `.txt`; a dictation made meanwhile waits for the file. With Save Subtitles (.srt) on, an `.srt` with timecodes goes beside the `.txt` under the same name (`Interview.srt`), one subtitle per stretch of speech the model marks. Files opened by another program than Finder or the Dock (`open -a STT` in Terminal, a script) are asked about first, since their text goes to the clipboard.
+Audio and video files: Choose File… in Settings, File › Transcribe File… (Command-O), a drop anywhere on either window, or Open With → STT in Finder. The text is saved beside the file as a `.txt` with the same name (`Interview.m4a` gives `Interview.txt`; an existing file is never overwritten, the new one is `Interview (2).txt`) and copied to the clipboard; it is not pasted. A small window shows the progress with Cancel, then the name of the `.txt`, which shows it in Finder when clicked. Several files go one after another, each to its own `.txt`; a dictation made meanwhile waits for the file. With Save Subtitles (.srt) on, an `.srt` with timecodes goes beside the `.txt` under the same name (`Interview.srt`), one subtitle per stretch of speech the model marks. Files opened by another program than Finder or the Dock (`open -a STT` in Terminal, a script) are asked about first, since their text goes to the clipboard.
+
+### History
+
+Each dictation is kept with its audio in `~/Library/Application Support/STT/History`: one store with the texts and one AAC file per recording, about 256 KB a minute. History in Settings keeps all, 30 days (the default), 7 days, the last 100, or none; a choice that would erase recordings asks once, with their number. Delete moves a recording to Recently Deleted for 30 days, where Recover brings it back and Delete Forever erases it with its audio. Transcribe Again runs the kept audio through any downloaded model and replaces the text. A text that a password field kept off the clipboard is not kept either.
 
 ### How it works
 
 - Engine: transcribe.cpp (MIT), one interface over Whisper, Parakeet and Qwen; each model is a single `.gguf` file.
 - Models download from the `handy-computer` repositories on Hugging Face at a fixed revision and are checked against a SHA-256 written in the code.
-- The microphone is recorded through `AVAudioEngine` into memory; nothing is written to disk. The recording goes on 0.3 s after the stop, so the last word isn’t cut. A Bluetooth headset is not used as the microphone, since that drops its sound to call quality: the Mac’s own microphone is taken instead, unless there is no other.
+- The microphone is recorded through `AVAudioEngine` into memory; once the text is made, the audio goes to History (below) unless History is set to Don’t Keep. The recording goes on 0.3 s after the stop, so the last word isn’t cut. A Bluetooth headset is not used as the microphone, since that drops its sound to call quality: the Mac’s own microphone is taken instead, unless there is no other.
 - Words from Dictionary go first in Whisper’s prompt, fitted to its 223 tokens with the model’s own tokenizer so the punctuation example and the text so far keep their place, and into Qwen’s system message. On 199 real dictations the words added to Dictionary went from 0-54 % written right to all of them, with nothing invented, and the built-in pairs raised the names written right from 78 % to 92 % with Whisper and from 41 % to 72 % with Parakeet.
 - Before recognition, silence is cut out and long speech is split at pauses into pieces of up to 30 s. Most models lose accuracy past 30-40 s in one run.
 - On silence and at the end of speech Whisper writes lines it learned from film subtitles, such as «Субтитры сделал DimaTorzok» or «Продолжение следует...». Such credit lines are removed when they close a piece of speech.
@@ -47,7 +51,7 @@ Audio and video files: Choose File… in the window, a drop anywhere on the wind
 
 ### Models
 
-No model comes with the app. One is chosen in the window and downloads after its size is confirmed, with a SHA-256 check. Models are plain `.gguf` files in `~/Library/Application Support/STT/models`. The model menu has Show in Finder and Delete.
+No model comes with the app. One is chosen in Settings and downloads after its size is confirmed, with a SHA-256 check. Models are plain `.gguf` files in `~/Library/Application Support/STT/models`. The model menu has Show in Finder and Delete.
 
 | Model | Full name | Size | Languages | License |
 |---|---|---|---|---|
@@ -81,11 +85,11 @@ Other people’s spontaneous speech: speeches in the European Parliament (VoxPop
 
 #### Does the voice leave the Mac?
 
-No. The code goes online only to download the chosen model and to check for updates, and iCloud carries three settings (below); a recording never leaves memory.
+No. The code goes online only to download the chosen model and to check for updates, and iCloud carries four settings (below); recordings and their texts stay on the Mac.
 
 #### Do the settings sync between Macs?
 
-Yes, by themselves, with no switch: Language, the Dictionary (words and replacements) and Save Subtitles (.srt) are the same on every Mac signed in to one iCloud account, through iCloud key-value storage; the later change wins. The model, the shortcuts and the other switches stay with each Mac. Without iCloud everything works the same on that Mac alone.
+Yes, by themselves, with no switch: Language, the Dictionary (words and replacements), Save Subtitles (.srt) and History are the same on every Mac signed in to one iCloud account, through iCloud key-value storage; the later change wins. The model, the shortcuts and the other switches stay with each Mac, and so do the recordings themselves. Without iCloud everything works the same on that Mac alone.
 
 #### Does it work without internet?
 
@@ -105,29 +109,29 @@ Filler sounds such as “uh” are removed. Words are never touched. No AI rewri
 
 #### Can it transcribe audio or video files?
 
-Yes, offline, with the chosen model: Choose File… in the window, a drop on the window, or Open With → STT in Finder. The text is saved beside the file as a `.txt` with the same name (and, with Save Subtitles (.srt) on, an `.srt` with timecodes) and copied to the clipboard. Several files at once give a `.txt` each. Shortcuts and the command line `stt-cli` do the same without the window.
+Yes, offline, with the chosen model: Choose File… in Settings, File › Transcribe File…, a drop on a window, or Open With → STT in Finder. The text is saved beside the file as a `.txt` with the same name (and, with Save Subtitles (.srt) on, an `.srt` with timecodes) and copied to the clipboard. Several files at once give a `.txt` each. Shortcuts and the command line `stt-cli` do the same without the window.
 
 #### Can words or names be added?
 
-Yes, in Dictionary (Edit… in the window). Words: names and terms written exactly as typed; Return adds one, Delete removes it, Restore brings back the 24 built-in ones (ChatGPT, Claude, GitHub and others). Whisper and Qwen take them; Parakeet takes no word list, and the window says so. Replacements: what a model writes and what to write instead, for every model, applied to the finished text; the table starts with 104 built-in pairs for names said in Russian or Ukrainian (клод → Claude, ютуб → YouTube), and its own Restore brings back removed ones.
+Yes, in Dictionary (Edit… in Settings). Words: names and terms written exactly as typed; Return adds one, Delete removes it, Restore brings back the 24 built-in ones (ChatGPT, Claude, GitHub and others). Whisper and Qwen take them; Parakeet takes no word list, and the window says so. Replacements: what a model writes and what to write instead, for every model, applied to the finished text; the table starts with 104 built-in pairs for names said in Russian or Ukrainian (клод → Claude, ютуб → YouTube), and its own Restore brings back removed ones. Command-V pastes into both; a list of lines «heard, Tab, written» pasted over the table becomes rows, and Delete removes the selected ones.
 
 #### How is it different from macOS Dictation?
 
-macOS Dictation comes with the system and its model can’t be chosen. In STT the model is an open one, chosen in the window and kept as a plain file.
+macOS Dictation comes with the system and its model can’t be chosen. In STT the model is an open one, chosen in Settings and kept as a plain file.
 
 ### Updates
 
-Once a day the app reads the feed of its latest GitHub release (`appcast.xml`) through Sparkle. Nothing about the Mac is sent. When a newer version is out, a window shows it with Install Update, Remind Me Later and Skip This Version; nothing is downloaded before Install Update. Check for Updates in the window checks at once.
+Once a day the app reads the feed of its latest GitHub release (`appcast.xml`) through Sparkle. Nothing about the Mac is sent. When a newer version is out, a window shows it with Install Update, Remind Me Later and Skip This Version; nothing is downloaded before Install Update. Check for Updates, in the STT menu and in Settings, checks at once.
 
 The feed and the disk image are signed with an EdDSA key, and Sparkle installs only an app that carries the same Developer ID signature.
 
 ### Settings and removal
 
-Settings (model, language, shortcuts, switches, dictionary) and the time of the last update check are in the defaults of `com.geragaraza.stt`, models in `~/Library/Application Support/STT/models`. The three synced settings are also kept for the iCloud account by the key-value service of macOS; they take no iCloud storage.
+Settings (model, language, shortcuts, switches, dictionary) and the time of the last update check are in the defaults of `com.geragaraza.stt`, models in `~/Library/Application Support/STT/models`, the history in `~/Library/Application Support/STT/History`. The four synced settings are also kept for the iCloud account by the key-value service of macOS; they take no iCloud storage.
 
-To remove STT: delete the models in the model menu or in that folder, Quit in the window, move `STT.app` to the Trash and run `defaults delete com.geragaraza.stt`. Its Microphone and Accessibility entries are removed in System Settings, Privacy & Security.
+To remove STT: Quit in Settings, delete the folder `~/Library/Application Support/STT` (models and history), move `STT.app` to the Trash and run `defaults delete com.geragaraza.stt`. Its Microphone and Accessibility entries are removed in System Settings, Privacy & Security.
 
-Installed with Homebrew, `brew uninstall --zap stt` quits it and removes the app, its settings and the models; the Microphone and Accessibility entries stay for System Settings.
+Installed with Homebrew, `brew uninstall --zap stt` quits it and removes the app, its settings, the models and the history; the Microphone and Accessibility entries stay for System Settings.
 
 ### Shortcuts
 
@@ -135,7 +139,7 @@ STT adds four actions to the Shortcuts app: Record is one press of the shortcut 
 
 ### Command line
 
-Homebrew links the command `stt-cli`; with the disk image, `ln -s /Applications/STT.app/Contents/MacOS/STT /usr/local/bin/stt-cli` makes it. It uses the model, language and dictionary chosen in the window.
+Homebrew links the command `stt-cli`; with the disk image, `ln -s /Applications/STT.app/Contents/MacOS/STT /usr/local/bin/stt-cli` makes it. It uses the model, language and dictionary chosen in Settings.
 
 ```sh
 stt-cli Interview.m4a > Interview.txt   # the text
@@ -147,15 +151,15 @@ Files are read with the rights of the program that runs the command, not the app
 
 ### Details
 
-- Version: 0.6.
+- Version: 0.7.
 - Bundle ID: `com.geragaraza.stt`.
-- Download: `STT.dmg`, 4.1 MB.
+- Download: `STT.dmg`, 4.4 MB.
 - Models: downloaded separately, 740 to 2,185 MB each.
 - Requires: Apple silicon, macOS 13 or later.
-- Permissions: Microphone, Accessibility. Network: to download a model and to check for updates; iCloud for three settings.
+- Permissions: Microphone, Accessibility. Network: to download a model and to check for updates; iCloud for four settings.
 - Signed with a Developer ID and notarized by Apple.
 - Interface: English, Ukrainian, Russian, from the language of macOS.
-- Code: Swift with AppKit, about 2,500 lines, the transcribe.cpp framework, and Sparkle for updates.
+- Code: Swift with AppKit, SwiftUI and Core Data, about 3,400 lines, the transcribe.cpp framework, and Sparkle for updates.
 - License: MIT.
 
 ### Build
