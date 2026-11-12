@@ -149,17 +149,29 @@ struct ShelfView: View {
                                                          : String(format: L("Recording: %@ or the record button. Every recording lands here as text."), shelf.hotKey()))
                     }
                 } else {
-                    List(selection: $selection) {
-                        ForEach(shown, id: \.objectID) { r in Row(r: r, trash: inTrash).tag(r.objectID) }
-                    }
-                    .contextMenu(forSelectionType: NSManagedObjectID.self) { ids in
-                        Actions(ids: ids, trash: inTrash, remove: { remove($0) }, recover: { shelf.recover($0); selection.subtract($0) })
-                    }
-                    .focused($listFocused)
-                    .onAppear { listFocused = true }
-                    .onDeleteCommand { remove(selection) }
-                    .onCopyCommand {
-                        picked.compactMap(\.text).isEmpty ? [] : [NSItemProvider(object: picked.compactMap(\.text).joined(separator: "\n\n") as NSString)]
+                    // A new List for every change of which rows there are (a recording added, deleted, recovered, a
+                    // search): on macOS 27 the List (an NSTableView) redraws wrongly after an insertion or a deletion,
+                    // and many rows show one record's text, time and length while the data is right (his 0.7.1 window
+                    // 2026-11-12 11:39: the newest dictation on the top 15 rows; reproduced alone with a plain
+                    // NSManagedObject list, with or without @ObservedObject rows, selection or animation). The new list
+                    // scrolls back to the selected row. Edits keep the list: a changed text is no change of rows.
+                    ScrollViewReader { proxy in
+                        List(selection: $selection) {
+                            ForEach(shown, id: \.objectID) { r in Row(r: r, trash: inTrash).tag(r.objectID) }
+                        }
+                        .contextMenu(forSelectionType: NSManagedObjectID.self) { ids in
+                            Actions(ids: ids, trash: inTrash, remove: { remove($0) }, recover: { shelf.recover($0); selection.subtract($0) })
+                        }
+                        .focused($listFocused)
+                        .onAppear {
+                            listFocused = true
+                            if let s = shown.first(where: { selection.contains($0.objectID) }) { proxy.scrollTo(s.objectID) }
+                        }
+                        .onDeleteCommand { remove(selection) }
+                        .onCopyCommand {
+                            picked.compactMap(\.text).isEmpty ? [] : [NSItemProvider(object: picked.compactMap(\.text).joined(separator: "\n\n") as NSString)]
+                        }
+                        .id(shown.map(\.objectID))   // last, so the whole list with its focus and keys is the new one
                     }
                 }
             }

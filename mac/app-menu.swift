@@ -185,6 +185,18 @@ extension App {
         case "select": DispatchQueue.main.asyncAfter(deadline: .now() + 1) { s.demoSelection = 3 }
         case "confirm": DispatchQueue.main.asyncAfter(deadline: .now() + 1) { s.folder = .deleted; s.demoAsk = true; s.demoSelection = 2 }
         case "deleted": DispatchQueue.main.asyncAfter(deadline: .now() + 1) { s.folder = .deleted; s.demoSelection = 1 }
+        case "adds":
+            // Dictations landing one after another while the window is open (STT_ADDS of them, a second apart), the way
+            // entry.swift adds a real one: the case of the 0.7.1 list that showed the newest text on many rows.
+            var n = 0
+            Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { t in
+                MainActor.assumeIsolated {
+                    n += 1
+                    if let r = History.shared.add(text: "Test dictation \(n)", samples: [Float](repeating: 0, count: 16000 * n),
+                                                  model: "", language: nil) { s.added(r) }
+                    if n >= Int(env["STT_ADDS"] ?? "12") ?? 12 { t.invalidate() }
+                }
+            }
         default: break
         }
     }
