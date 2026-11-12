@@ -151,7 +151,7 @@ Files are read with the rights of the program that runs the command, not the app
 
 ### Details
 
-- Version: 0.7.
+- Version: 0.7.1.
 - Bundle ID: `com.geragaraza.stt`.
 - Download: `STT.dmg`, 4.4 MB.
 - Models: downloaded separately, 740 to 2,185 MB each.
