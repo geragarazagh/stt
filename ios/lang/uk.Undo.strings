@@ -1,0 +1,3 @@
+/* The name of an undoable delete, after the system's «Відмінити» (Voice Memos' own words, iOS 27.2). */
+"Delete Recording" = "видалення запису";
+"Delete Recordings" = "видалення записів";

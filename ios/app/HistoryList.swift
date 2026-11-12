@@ -24,7 +24,20 @@ import SwiftUI
     func reload() { items = History.shared.all(); trash = History.shared.trash() }
     func added(_ r: Recording) { reload(); withAnimation(.smooth(duration: 0.45)) { open = r.objectID } }
     func pick(_ ids: Set<NSManagedObjectID>) -> [Recording] { (items + trash).filter { ids.contains($0.objectID) } }
-    func delete(_ ids: Set<NSManagedObjectID>) { withAnimation(.smooth) { History.shared.delete(pick(ids)); reload() } }
+    var inTrash = false                     // Recently Deleted is on screen: no record control there, as in Voice Memos
+    // Delete goes to Recently Deleted and can be undone by shaking the iPhone, as in Voice Memos («Undo Delete
+    // Recording»): the window's undo manager gets the way back (his 0.2 video, 2026-11-12).
+    // The window's own undo manager: the one UIKit asks when the iPhone is shaken.
+    static var windowUndo: UndoManager? {
+        UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.keyWindow }.first?.undoManager
+    }
+    func delete(_ ids: Set<NSManagedObjectID>, undoable: Bool = true) {
+        withAnimation(.smooth) { History.shared.delete(pick(ids)); reload() }
+        guard undoable, let undo = Shelf.windowUndo else { return }
+        undo.registerUndo(withTarget: self) { s in MainActor.assumeIsolated { s.recover(ids) } }
+        undo.setActionName(ids.count == 1 ? String(localized: "Delete Recording", table: "Undo")
+                                          : String(localized: "Delete Recordings", table: "Undo"))
+    }
     func recover(_ ids: Set<NSManagedObjectID>) { withAnimation(.smooth) { History.shared.recover(pick(ids)); reload() } }
     func erase(_ ids: Set<NSManagedObjectID>) { withAnimation(.smooth) { History.shared.erase(pick(ids)); reload() } }
 }
@@ -39,6 +52,7 @@ struct HistoryList: View {
         let q = search.trimmingCharacters(in: .whitespaces)
         return q.isEmpty ? shelf.items : shelf.items.filter { ($0.text ?? "").localizedStandardContains(q) }
     }
+    @State private var erasingAll = false
     func remove(_ ids: Set<NSManagedObjectID>) {
         shelf.delete(ids); picked.subtract(ids)
         if shelf.items.isEmpty { editMode = .inactive }
@@ -54,6 +68,18 @@ struct HistoryList: View {
                                                          : "Every recording lands here as text."))
             } else {
                 List(selection: $picked) {
+                    // Recently Deleted on top, not after the last of a hundred recordings (his word on 0.2: one scrolled
+                    // all the way down for it and back up). A long press offers Recover All and Delete All, as the
+                    // Files app's Recently Deleted does.
+                    if !shelf.trash.isEmpty && editMode == .inactive && search.isEmpty {
+                        NavigationLink { RecentlyDeleted() } label: {
+                            LabeledContent { Text("\(shelf.trash.count)") } label: { Label("Recently Deleted", systemImage: "trash") }
+                        }
+                        .contextMenu {
+                            Button { shelf.recover(Set(shelf.trash.map(\.objectID))) } label: { Label("Recover All", systemImage: "arrow.uturn.backward") }
+                            Button(role: .destructive) { erasingAll = true } label: { Label("Delete All", systemImage: "trash") }
+                        }
+                    }
                     ForEach(shown, id: \.objectID) { r in
                         Row(r: r, selecting: editMode == .active, ask: { remove($0) })
                             .contentShape(Rectangle())
@@ -70,13 +96,6 @@ struct HistoryList: View {
                             .tag(r.objectID)
                             // A ticked row keeps the list's own background: Voice Memos marks it with the tick alone.
                             .listRowBackground(Color(.systemBackground))
-                    }
-                    if !shelf.trash.isEmpty && editMode == .inactive && search.isEmpty {
-                        Section {
-                            NavigationLink { RecentlyDeleted() } label: {
-                                LabeledContent { Text("\(shelf.trash.count)") } label: { Label("Recently Deleted", systemImage: "trash") }
-                            }
-                        }
                     }
                 }
                 .listStyle(.plain)
@@ -107,6 +126,11 @@ struct HistoryList: View {
                         .disabled(picked.isEmpty)
                 }
             }
+        }
+        .confirmationDialog("Are you sure you want to permanently delete all recordings?", isPresented: $erasingAll, titleVisibility: .visible) {
+            Button("Delete Forever", role: .destructive) { shelf.erase(Set(shelf.trash.map(\.objectID))) }
+        } message: {
+            Text("These recordings will be deleted. This action cannot be undone.")
         }
         .onChange(of: editMode) { _, m in if m == .inactive { picked = [] } }
         .onChange(of: picked) { _, p in shelf.picked = p.count }
@@ -172,6 +196,8 @@ struct RecentlyDeleted: View {
                                     : "These recordings will be deleted. This action cannot be undone.")
         }
         .onChange(of: shelf.trash.isEmpty) { _, empty in if empty { dismiss() } }
+        .onAppear { withAnimation(.smooth) { shelf.inTrash = true } }
+        .onDisappear { withAnimation(.smooth) { shelf.inTrash = false } }
     }
 }
 

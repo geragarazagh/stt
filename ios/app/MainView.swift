@@ -50,7 +50,7 @@ struct MainView: View {
         // Over the navigation bar too: Voice Memos fades its title with the list.
         .overlay { if d.phase != .idle { Color(.systemBackground).opacity(0.55).ignoresSafeArea().transition(.opacity) } }
         .overlay(alignment: .bottom) {
-            if d.current != nil && editMode == .inactive && !Shelf.shared.editingText && !Shelf.shared.searching { Recorder() }
+            if d.current != nil && editMode == .inactive && !Shelf.shared.editingText && !Shelf.shared.searching && !Shelf.shared.inTrash { Recorder() }
         }
         .animation(morph, value: d.phase != .idle)
     }
