@@ -24,7 +24,9 @@ struct MainView: View {
                     HistoryList(editMode: $editMode)
                 }
             }
-            .navigationTitle(d.current == nil && Shelf.shared.items.isEmpty ? "" : String(localized: "Recordings"))
+            // In Select the title counts the ticked rows, as Voice Memos' «9 Selected».
+            .navigationTitle(d.current == nil && Shelf.shared.items.isEmpty ? ""
+                             : editMode == .active ? String(localized: "\(Shelf.shared.picked) Selected") : String(localized: "Recordings"))
             .contentMargins(.bottom, 96, for: .scrollContent)   // the last row can scroll above the control
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -48,7 +50,7 @@ struct MainView: View {
         // Over the navigation bar too: Voice Memos fades its title with the list.
         .overlay { if d.phase != .idle { Color(.systemBackground).opacity(0.55).ignoresSafeArea().transition(.opacity) } }
         .overlay(alignment: .bottom) {
-            if d.current != nil && editMode == .inactive && !Shelf.shared.editingText { Recorder() }
+            if d.current != nil && editMode == .inactive && !Shelf.shared.editingText && !Shelf.shared.searching { Recorder() }
         }
         .animation(morph, value: d.phase != .idle)
     }

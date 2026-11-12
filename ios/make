@@ -9,6 +9,7 @@ for l in ru uk; do
   cat ../mac/lang/$l.strings lang/$l.strings > gen/loc/$l.lproj/Localizable.strings
   cp lang/$l.InfoPlist.strings gen/loc/$l.lproj/InfoPlist.strings
   cp lang/$l.AppShortcuts.strings gen/loc/$l.lproj/AppShortcuts.strings   # Siri and Shortcuts phrases
+  cp lang/$l.stringsdict gen/loc/$l.lproj/Localizable.stringsdict          # plural forms (Select's title)
 done
 printf '"NSMicrophoneUsageDescription" = "Speech is turned into text on this iPhone and goes nowhere.";\n' > gen/loc/en.lproj/InfoPlist.strings
 # English keys are the English text; an empty table keeps en listed as a localization.

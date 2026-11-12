@@ -18,6 +18,9 @@ import SwiftUI
     var open: NSManagedObjectID?          // the row opened in place
     var busy: Set<NSManagedObjectID> = []  // transcribing again
     var editingText = false                 // the keyboard is up for a row: no record button, no Select (MainView)
+    var picked = 0                          // rows ticked in Select, for the title «N Selected» (MainView)
+    var searching = false                   // the search field is open: iOS 26 docks it over the keyboard, where the
+                                            // record control would cover it (MainView hides the control)
     func reload() { items = History.shared.all(); trash = History.shared.trash() }
     func added(_ r: Recording) { reload(); withAnimation(.smooth(duration: 0.45)) { open = r.objectID } }
     func pick(_ ids: Set<NSManagedObjectID>) -> [Recording] { (items + trash).filter { ids.contains($0.objectID) } }
@@ -30,6 +33,7 @@ struct HistoryList: View {
     @Binding var editMode: EditMode
     @State private var picked: Set<NSManagedObjectID> = []
     @State private var search = ""
+    @State private var searching = false
     private var shelf: Shelf { Shelf.shared }
     var shown: [Recording] {
         let q = search.trimmingCharacters(in: .whitespaces)
@@ -64,6 +68,8 @@ struct HistoryList: View {
                             }
                             .contextMenu { RecMenu(r: r, ask: { remove($0) }) }
                             .tag(r.objectID)
+                            // A ticked row keeps the list's own background: Voice Memos marks it with the tick alone.
+                            .listRowBackground(Color(.systemBackground))
                     }
                     if !shelf.trash.isEmpty && editMode == .inactive && search.isEmpty {
                         Section {
@@ -74,11 +80,19 @@ struct HistoryList: View {
                     }
                 }
                 .listStyle(.plain)
-                .searchable(text: $search, placement: .navigationBarDrawer(displayMode: .automatic), prompt: "Search Recordings")
+                // Voice Memos' search (his pick 2026-11-12, «как выбрала сессия»): a magnifier at the top right, and
+                // the field under the title only after it is pressed, until Cancel. (.toolbar placement with .minimize
+                // put the button at the bottom, under the record control.)
+                .modifier(SearchWhen(on: searching, text: $search, presented: $searching))
             }
         }
         .environment(\.editMode, $editMode)
         .toolbar {
+            if !searching && !(shelf.items.isEmpty && shelf.trash.isEmpty) {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button { searching = true } label: { Label("Search", systemImage: "magnifyingglass") }
+                }
+            }
             if editMode == .active {
                 ToolbarItemGroup(placement: .bottomBar) {
                     Button(picked.count == shelf.items.count ? "Deselect All" : "Select All") {
@@ -95,6 +109,8 @@ struct HistoryList: View {
             }
         }
         .onChange(of: editMode) { _, m in if m == .inactive { picked = [] } }
+        .onChange(of: picked) { _, p in shelf.picked = p.count }
+        .onChange(of: searching) { _, v in shelf.searching = v }
         .onAppear { History.shared.purge(); shelf.reload() }
     }
 }
@@ -163,6 +179,21 @@ struct RecentlyDeleted: View {
 func daysLeft(_ r: Recording) -> String {
     let f = DateComponentsFormatter(); f.allowedUnits = [.day]; f.unitsStyle = .full
     return f.string(from: DateComponents(day: History.daysLeft(r))) ?? ""
+}
+
+// The search field exists only while searching: the magnifier opens it at once, Cancel takes it away and clears the text.
+struct SearchWhen: ViewModifier {
+    let on: Bool
+    @Binding var text: String
+    @Binding var presented: Bool
+    func body(content: Content) -> some View {
+        if on {
+            content.searchable(text: $text, isPresented: $presented, placement: .navigationBarDrawer(displayMode: .always),
+                               prompt: "Search Recordings")
+        } else {
+            content.onAppear { text = "" }
+        }
+    }
 }
 
 struct TapToOpen: ViewModifier {
