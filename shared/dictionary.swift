@@ -54,7 +54,7 @@ let presetPairs: [(heard: String, written: String)] = [
 // Stored as plain arrays under keys meant to stay as they are, and since 0.6 synced through iCloud with the person's other
 // devices (store.swift): the later edit wins.
 @MainActor enum Words {
-    static let wordsKey = "words", replacementsKey = "replacements", changedKey = "dictionaryChanged"
+    static let wordsKey = "words", replacementsKey = "replacements", changedKey = "dictionaryChanged"   // nosemgrep (names of settings keys, not secrets)
     static var onChange: (() -> Void)?
     private static func changed() { Store.shared.set(Date(), changedKey); onChange?() }
 

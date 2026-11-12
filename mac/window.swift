@@ -378,7 +378,7 @@ final class AppIconView: NSImageView {
         if recordingCancel {
             if new == shortcut { status.stringValue = L("Already in use"); return }
             cancelKey = new
-            UserDefaults.standard.set(key, forKey: "cancelKey")
+            UserDefaults.standard.set(key, forKey: "cancelKey")   // nosemgrep (a shortcut key code in the app's own defaults, not a secret)
             UserDefaults.standard.set(mods, forKey: "cancelMods")
             recording = false; recordingCancel = false
             refresh()
@@ -388,7 +388,7 @@ final class AppIconView: NSImageView {
         if !tapOwnsKeys && takenByMacOS(new) { status.stringValue = L("Conflicts with macOS"); return }
         if register(new) != noErr && !tapOwnsKeys { status.stringValue = L("This shortcut can’t be used"); return }
         shortcut = new
-        UserDefaults.standard.set(key, forKey: "key")
+        UserDefaults.standard.set(key, forKey: "key")   // nosemgrep (a shortcut key code in the app's own defaults, not a secret)
         UserDefaults.standard.set(mods, forKey: "mods")
         recording = false
         refresh()

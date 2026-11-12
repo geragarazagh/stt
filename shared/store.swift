@@ -31,7 +31,7 @@ import Security
 
     private let d = UserDefaults.standard
     private var cloud: NSUbiquitousKeyValueStore?
-    private let timesKey = "syncTimes"   // when this device last edited, or took from iCloud, each synced key
+    private let timesKey = "syncTimes"   // nosemgrep (the name of a settings key, not a secret). when this device last edited, or took from iCloud, each synced key
 
     func object(_ key: String) -> Any? { d.object(forKey: key) }
 

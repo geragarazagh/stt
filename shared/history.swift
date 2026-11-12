@@ -44,7 +44,7 @@ let historyFolder = appFolder.appendingPathComponent("History", isDirectory: tru
 // How much history a person keeps. Stored as a short string in the synced key `historyKeep`.
 enum Keep: Equatable {
     case all, last(Int), days(Int), never
-    static let key = "historyKeep"
+    static let key = "historyKeep"   // nosemgrep (the name of a settings key, not a secret)
     static let standard = Keep.days(30)   // the default for new people (his answer 2026-11-11 ~16:30)
     static let trashDays = 30.0           // Recently Deleted, as Voice Memos
 
