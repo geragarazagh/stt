@@ -85,21 +85,14 @@
 
 /* History and the main window (brief C, 2026-11-11). Apple's own words where Voice Memos or AppKit have them. */
 "History" = "Історія";
-"Keep All" = "Зберігати все";
 "30 Days" = "30 днів";
 "7 Days" = "7 днів";
-"Last 100" = "Останні 100";
 /* The keep scale (0.3): Messages and Voice Memos words on iOS 27.2 («1 год», «Бессрочно» / «1 рік», «Завжди»). */
 "1 Day" = "1 день";
 "1 Year" = "1 рік";
 "Forever" = "Завжди";
 "Last %d" = "Останні %d";
 "Last %lld" = "Останні %lld";
-"Last…" = "Останні…";
-"How many recent recordings to keep?" = "Скільки останніх записів зберігати?";
-"OK" = "OK";
-"Recordings beyond this number are deleted, the oldest first." = "Записи понад це число видаляються, починаючи з найстаріших.";
-"Number" = "Число";
 "Don’t Keep" = "Не зберігати";
 "Delete %d recordings?" = "Видалити записи (%d)?";
 "Delete this recording?" = "Видалити запис?";

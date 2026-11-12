@@ -121,20 +121,14 @@ struct CopyTextFooter: View {
 }
 
 // How much history is kept: the Mac's scale and words (KeepMenu), synced like the language. As in Settings > Messages
-// > Keep Messages and Voice Memos' Clear Deleted, the row shows the choice and opens a page of the choices with a tick;
-// variant C is one switch. A choice that would delete recordings asks once, with the number.
+// > Keep Messages and Voice Memos' Clear Deleted, the row shows the choice and opens a page of the choices with a tick.
+// A choice that would delete recordings asks once, with the number.
 struct KeepRow: View {
     @State private var keep = History.shared.keep
     @State private var asking: (keep: Keep, count: Int)?
     var body: some View {
-        Group {
-            if KeepMenu.variant == "C" {
-                Toggle("History", isOn: Binding(get: { keep != .never }, set: { pick($0 ? .all : .never) }))
-            } else {
-                NavigationLink { KeepPage(keep: $keep, pick: pick) } label: {
-                    LabeledContent("History") { Text(KeepRow.title(keep)) }
-                }
-            }
+        NavigationLink { KeepPage(keep: $keep, pick: pick) } label: {
+            LabeledContent("History") { Text(KeepRow.title(keep)) }
         }
         .confirmationDialog("Delete \(asking?.count ?? 0) recordings?", isPresented: Binding(get: { asking != nil }, set: { if !$0 { asking = nil } }),
                             titleVisibility: .visible) {
@@ -156,38 +150,22 @@ struct KeepRow: View {
     }
 }
 
-// The choices, a tick on the chosen one. B adds «Last…»: ticked, it opens a number row under the list.
+// The choices, a tick on the chosen one; a «Last N» set before 0.3 is listed last with its number while it holds.
 struct KeepPage: View {
     @Binding var keep: Keep
     var pick: (Keep) -> Void
-    @State private var count = 100
-    @State private var own = false
     var body: some View {
         List {
             Section {
                 ForEach(KeepMenu.scale, id: \.0.string) { k, title in
-                    row(Text(LocalizedStringKey(title)), on: keep == k && !own) { own = false; pick(k) }
+                    row(Text(LocalizedStringKey(title)), on: keep == k) { pick(k) }
                 }
-                if KeepMenu.variant == "B" || isLast {
-                    row(Text(isLast && !own ? KeepRow.title(keep) : String(localized: "Last…")), on: isLast || own) { own = true }
-                }
-            }
-            if own {
-                Section {
-                    HStack {
-                        Text("Number")
-                        TextField("100", value: $count, format: .number).keyboardType(.numberPad).multilineTextAlignment(.trailing)
-                            .onSubmit { if count > 0 { pick(.last(count)) } }
-                    }
-                } footer: { Text("Recordings beyond this number are deleted, the oldest first.") }
+                if case .last = keep { row(Text(KeepRow.title(keep)), on: true) {} }
             }
         }
         .navigationTitle("History")
         .navigationBarTitleDisplayMode(.inline)
-        .onAppear { if case .last(let n) = keep { count = n; own = KeepMenu.variant == "B" } }
-        .onDisappear { if own, count > 0, keep != .last(count) { pick(.last(count)) } }
     }
-    private var isLast: Bool { if case .last = keep { true } else { false } }
     private func row(_ label: Text, on: Bool, _ action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack { label; Spacer(); if on { Image(systemName: "checkmark").foregroundStyle(Color.accentColor).fontWeight(.semibold) } }
