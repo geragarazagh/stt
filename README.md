@@ -158,12 +158,16 @@ ln -s /Applications/STT.app/Contents/MacOS/STT /usr/local/bin/stt-cli
 It uses the model, language and dictionary chosen in Settings.
 
 ```sh
-stt-cli Interview.m4a > Interview.txt   # the text
-stt-cli --srt Interview.m4a             # subtitles
-stt-cli --toggle                        # start or stop a recording
+stt-cli Interview.m4a > Interview.txt     # the text
+stt-cli --srt Interview.m4a               # subtitles
+stt-cli --toggle                          # start or stop a recording
+stt-cli --add-word Supabase               # a word for the dictionary
+stt-cli --add-pair "super base" Supabase  # a replacement: heard, written
 ```
 
 Files are read with the rights of the program that runs the command, not the app’s. `--toggle` works the running app as its key does, and only for a program that has the Microphone permission itself (Terminal asks once). Started as an app or a launchd job rather than from a terminal or a script, the command refuses to run, since it would then act with STT’s own permissions.
+
+`--add-word` and `--add-pair` are for AI agents and scripts that keep the dictionary for a person: an agent that sees the same word misheard again adds it, and nobody has to open Dictionary. They go through the running app as an edit in Dictionary does, so the other Macs get it too, and each is checked first: 200 characters at most, no control or text-direction characters. A word or replacement already there is left as it is; the same word in another spelling, or the same heard form with another written one, is changed. The answer says which (Added, Already in the dictionary, Changed), and an error exits with 1.
 
 ### Details
 
