@@ -1,12 +1,10 @@
-English · [Українська](README_UA.md) · [Русский](README_RU.md)
-
 <picture><source media="(prefers-color-scheme: dark)" srcset="docs/icon-dark.png"><img src="docs/icon.png" width="128" alt="STT icon"></picture>
 
 # STT (Speech to Text) for Mac
 
 Free, open source speech to text app for macOS. Press a keyboard shortcut in any app, speak, press it again, and the text lands in the app in front. It also stays on the clipboard.
 
-Apple silicon, macOS 13 or later. Interface in English, Ukrainian and Russian. Signed with a Developer ID and notarized by Apple.
+Apple silicon, macOS 13 or later. Signed with a Developer ID and notarized by Apple.
 
 ![STT in use: Leo Tolstoy's phonograph recordings of 1908-1909 in Russian, French, English and German in STT's history, the letter he dictated on 9 April 1908 open as STT heard it, unedited, the player at 0:33, where «смертной казни» (the death penalty) is heard as «смерти металли», and Settings beside it, dark appearance](docs/scene.webp)
 
@@ -160,7 +158,6 @@ Files are read with the rights of the program that runs the command, not the app
 - Requires: Apple silicon, macOS 13 or later.
 - Permissions: Microphone, Accessibility. Network: to download a model and to check for updates; iCloud for four settings.
 - Signed with a Developer ID and notarized by Apple.
-- Interface: English, Ukrainian, Russian, from the language of macOS.
 - Code: Swift with AppKit, SwiftUI and Core Data, about 3,400 lines, the transcribe.cpp framework, and Sparkle for updates.
 - License: MIT.
 
