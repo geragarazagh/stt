@@ -24,7 +24,8 @@ fi
 cp -R vendor/CTranscribe.framework "$app/Contents/Frameworks/"
 # Apple silicon only, like the other apps; the Intel half of the framework is 6 MB of nothing here.
 bin=$app/Contents/Frameworks/CTranscribe.framework/Versions/A/CTranscribe
-lipo "$bin" -thin arm64 -output $tmp/thin && cp $tmp/thin "$bin"
+# vendor/ may hold it thin already (since 2026-11-12), and lipo refuses -thin on a thin file.
+[ "$(lipo -archs "$bin")" = arm64 ] || { lipo "$bin" -thin arm64 -output $tmp/thin && cp $tmp/thin "$bin"; }
 
 # Updates: Sparkle, from its release, checked against a pinned checksum. Only what a non-sandboxed app
 # runs goes into the bundle: no XPC services (they serve sandboxed apps), no headers, Apple silicon only.
