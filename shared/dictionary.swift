@@ -98,6 +98,55 @@ let presetPairs: [(heard: String, written: String)] = [
     // The preset words that were removed come back where they were; the person's own words stay first.
     static func restore() { words = words + missingPreset }
 
+    // One word or one pair from outside the window: `stt-cli --add-word` / `--add-pair` through the running app (cli.swift),
+    // for agents that keep a person's dictionary for them (his idea 2026-11-11: an agent that sees the same word misheard
+    // again asks once and writes it here, «чтобы ему даже не надо было там лазить под капотом»). The answer is said back
+    // to the agent: ok and what happened, or why not.
+    // - The same limits as a value from iCloud (store.swift, 200 characters, 2000 words, 5000 pairs), and nothing that
+    //   printable() would change: these strings end up in pasted text, and a written form is put in after printable() ran
+    //   on the model's text, so a newline or an escape in it could otherwise run a command in a terminal.
+    // - The same word in another spelling, or a heard form already in the table, is changed in place, not added twice: an
+    //   agent that adds «GitHub» over «Github» means the new spelling.
+    // - The person's own words and rows stay as they are, the new one goes last, as Return adds it in the window.
+    static func problem(_ s: String) -> String? {
+        if s.isEmpty { return "Empty." }
+        if s.unicodeScalars.count > 200 { return "Longer than 200 characters." }
+        if printable(s) != s || s.unicodeScalars.contains(where: { $0.value == 0x7F }) {
+            return "Control or text-direction characters are not allowed."
+        }
+        return nil
+    }
+
+    static func add(word raw: String) -> (ok: Bool, answer: String) {
+        let w = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let p = problem(w) { return (false, p) }
+        var list = words
+        if let i = list.firstIndex(where: { $0.lowercased() == w.lowercased() }) {
+            if list[i] == w { return (true, "Already in the dictionary: \(w)") }
+            let old = list[i]; list[i] = w; words = list
+            return (true, "Changed: \(old) → \(w)")
+        }
+        guard list.count < 2000 else { return (false, "The word list is full (2000 words).") }
+        words = list + [w]
+        return (true, "Added: \(w)")
+    }
+
+    static func add(heard rawHeard: String, written rawWritten: String) -> (ok: Bool, answer: String) {
+        let heard = rawHeard.trimmingCharacters(in: .whitespacesAndNewlines), written = rawWritten.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let p = problem(heard) { return (false, "Heard: " + p) }
+        if let p = problem(written) { return (false, "Written: " + p) }
+        if heard == written { return (false, "Heard and written are the same.") }
+        var rows = replacements
+        if let i = rows.firstIndex(where: { $0.heard.lowercased() == heard.lowercased() }) {
+            if rows[i].written == written { return (true, "Already in the dictionary: \(rows[i].heard) → \(written)") }
+            let old = rows[i].written; rows[i] = (heard, written); replacements = rows
+            return (true, "Changed: \(heard) → \(written) (was \(old))")
+        }
+        guard rows.count < 5000 else { return (false, "The replacement table is full (5000 rows).") }
+        replacements = rows + [(heard, written)]
+        return (true, "Added: \(heard) → \(written)")
+    }
+
     // Trimmed, no empty ones, no repeats (the first spelling wins).
     static func clean(_ list: [String]) -> [String] {
         var seen = Set<String>()

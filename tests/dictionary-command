@@ -1,0 +1,63 @@
+#!/bin/zsh
+# Tests stt-cli --add-word / --add-pair (cli.swift, Words.add in shared/dictionary.swift) against a running test copy.
+#   TEST=1 ./build, then: tests/dictionary-command "STT Test.app"
+# Only the test copy (its own id, defaults and socket), never STT.app: the test empties the dictionary it writes to. On
+# his Mac it runs in the agents' own session, so the window the test copy opens at launch never reaches his screen:
+#   cs run zsh /Users/Shared/claude/stt-test/dictionary-command "/Users/Shared/claude/stt-test/STT Test.app"
+# (claude can't read his home: copy the app and this script to /Users/Shared/claude/stt-test first.)
+# Not covered here: the Dictionary window open during a command (its edit keeps what was added meanwhile); that was
+# checked by hand through AX (stt.md, «Checked»).
+set -u
+app=${1:?usage: dictionary-command "STT Test.app"}
+id=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist")
+[ "$id" = com.geragaraza.stt.test ] || { echo "not the test copy: $id"; exit 2; }
+cli=$app/Contents/MacOS/STT
+fails=0
+
+# One case: the arguments, the exit code wanted, the answer wanted (standard output or error, whole).
+check() {
+  local want=$1 says=$2; shift 2
+  local out; out=$("$cli" "$@" 2>&1); local got=$?
+  if [ $got = $want ] && [ "$out" = "$says" ]; then echo "ok    $*"
+  else echo "FAIL  $*: exit $got, «$out» (wanted $want, «$says»)"; fails=$((fails + 1)); fi
+}
+
+pkill -f "$cli" 2>/dev/null; sleep 1
+check 1 "STT is not running." --add-word Vataga
+defaults delete $id words 2>/dev/null; defaults delete $id replacements 2>/dev/null
+open -g -a "$app" --args --background
+for i in {1..20}; do "$cli" --add-word Probe >/dev/null 2>&1 && break; sleep 0.5; done
+
+check 0 "Already in the dictionary: Probe" --add-word Probe
+check 0 "Added: Vataga" --add-word Vataga
+check 0 "Already in the dictionary: Vataga" --add-word " Vataga "
+check 0 "Changed: Vataga → VATAGA" --add-word VATAGA
+check 0 "Already in the dictionary: GitHub" --add-word GitHub
+check 0 "Added: ватага → Vataga" --add-pair ватага Vataga
+check 0 "Already in the dictionary: ватага → Vataga" --add-pair Ватага Vataga
+check 0 "Changed: ватага → Vataga Terminal (was Vataga)" --add-pair ватага "Vataga Terminal"
+check 0 "Already in the dictionary: клод → Claude" --add-pair клод Claude
+check 0 "Added: github → GitHub" --add-pair github GitHub
+check 1 "Heard and written are the same." --add-pair same same
+check 1 "Empty." --add-word "  "
+check 1 "Control or text-direction characters are not allowed." --add-word $'bad\e[0m'
+check 1 "Written: Control or text-direction characters are not allowed." --add-pair x $'line\nrm -rf ~'
+check 1 "Written: Control or text-direction characters are not allowed." --add-pair y $'a\xe2\x80\xaeb'
+check 1 "Heard: Control or text-direction characters are not allowed." --add-pair $'a\xc2\x85b' z
+check 1 "Longer than 200 characters." --add-word $(printf 'a%.0s' {1..201})
+usage=$("$cli" --help)
+check 1 "$usage" --add-word
+check 1 "$usage" --add-pair one
+check 1 "$usage" --add-word a b
+check 1 "$usage" --frobnicate
+
+# What the app stored: the new ones last, after the built-in lists, each once.
+words=$(defaults export $id - | plutil -extract words json -o - -)
+pairs=$(defaults export $id - | plutil -extract replacements json -o - -)
+[[ $words == *'"NotebookLM","Probe","VATAGA"]' ]] && echo "ok    words stored" || { echo "FAIL  words: $words"; fails=$((fails + 1)); }
+[[ $pairs == *'["ватага","Vataga Terminal"],["github","GitHub"]]' ]] && echo "ok    pairs stored" || { echo "FAIL  pairs: ${pairs[-120,-1]}"; fails=$((fails + 1)); }
+[ $(echo $pairs | grep -o '\["' | wc -l) -eq 106 ] && echo "ok    106 pairs" || { echo "FAIL  pair count"; fails=$((fails + 1)); }
+
+pkill -f "$cli"
+echo "$fails failed"
+exit $((fails > 0))

@@ -4,6 +4,8 @@
 //   stt-cli FILE...         each file's text to standard output, with the model, language and dictionary set in the app
 //   stt-cli --srt FILE...   the same as subtitles (SubRip)
 //   stt-cli --toggle        starts or stops a recording in the running app, as its key does
+//   stt-cli --add-word WORD             adds a word to the dictionary of the running app (dictionary.swift, Words.add)
+//   stt-cli --add-pair HEARD WRITTEN    adds a replacement: what a model writes, and what to write instead
 //
 // Why stt-cli and not stt: a plain `stt` is taken on many Macs by speech tools of its own (the author's own Mac among them),
 // and Homebrew has an unrelated «sttr».
@@ -15,6 +17,12 @@
 // socket, so posting a notification or writing to the socket from elsewhere does nothing), and the program that ran it
 // must hold the microphone permission itself (macOS answers that for the responsible program, Terminal for a person
 // typing): a program the person never allowed the microphone can't record through STT.
+// The dictionary commands (2026-11-15, for agents that keep a person's dictionary) also go through the app and not into the
+// settings file: the running app would not see a `defaults write` until it relaunched, and the edit must reach its other
+// devices through iCloud with its time (store.swift), which only the signed app can do. The same signature check holds;
+// no microphone check, since a word in a list records nothing. Any program of the person's could already write the
+// settings file itself, so the socket gives none of them more than they had; the app checks every word as it checks a
+// value from iCloud.
 // Both hold only while someone else is the responsible program. Launched as an app (`open -n -a STT --args …`), as a launchd
 // job, or with responsibility disclaimed, this process answers for itself and would read files and use the microphone with
 // the app's own permissions (security pass 2026-11-10, both hunters): every command-line mode refuses to run then.
@@ -57,20 +65,26 @@ private func fail(_ s: String) -> Never { FileHandle.standardError.write((s + "\
     let named = URL(fileURLWithPath: args[0]).lastPathComponent != (Bundle.main.object(forInfoDictionaryKey: "CFBundleExecutable") as? String ?? "STT")
     let rest = Array(args.dropFirst())
     let usage = """
-    Usage: \(cliName) [--srt] FILE...   prints the text of each audio or video file
-           \(cliName) --toggle          starts or stops a recording in STT
+    Usage: \(cliName) [--srt] FILE...              prints the text of each audio or video file
+           \(cliName) --toggle                     starts or stops a recording in STT
+           \(cliName) --add-word WORD              adds a name or term to STT's dictionary, spelled as it should be written
+           \(cliName) --add-pair HEARD WRITTEN     adds a replacement: what the model writes, and what to write instead
     """
     // Which mode, if any; the app itself (no arguments, or its own --login, --background, --pasteboard) goes on.
     var run: (() -> Never)?
     switch rest.first {
     case "--toggle": run = rest.count == 1 ? { toggle() } : { fail(usage) }
+    case "--add-word": run = rest.count == 2 ? { ask(["add-word", rest[1]]) } : { fail(usage) }
+    case "--add-pair": run = rest.count == 3 ? { ask(["add-pair", rest[1], rest[2]]) } : { fail(usage) }
     case "--srt": run = { transcribeFromCommandLine(rest) }
     case "--help", "-h": print(usage); exit(0)
     case nil: if named { print(usage); exit(0) }
     case let a? where !a.hasPrefix("-"):
         // Under its own name STT takes a file only when it exists, so nothing a system passes at launch is read as one.
         if named || FileManager.default.fileExists(atPath: a) { run = { transcribeFromCommandLine(rest) } }
-    default: if named { fail(usage) }
+    // An unknown --word under its own name too (2026-11-15: `STT --version` started a second copy, which showed its window and
+    // took the running app's socket over). The app's own: --login, --background, --pasteboard; macOS's are one dash (-psn_…).
+    case let a?: if named || a.hasPrefix("--") && !["--login", "--background", "--pasteboard"].contains(a) { fail(usage) }
     }
     guard let run else { return false }
     if answersForItself() {
@@ -125,20 +139,35 @@ private func toggle() -> Never {
         if done.wait(timeout: .now() + 120) == .timedOut || !granted { fail("No access to the microphone for the program that ran \(cliName).") }
     default: fail("No access to the microphone for the program that ran \(cliName). It is given in System Settings > Privacy & Security > Microphone.")
     }
+    send("toggle\n")
+}
+
+// A dictionary command, as one line of JSON: the words may hold any character but a newline, and the app refuses those.
+private func ask(_ command: [String]) -> Never {
+    guard let data = try? JSONSerialization.data(withJSONObject: command), data.count < 4000 else { fail("Too long.") }
+    send(String(decoding: data, as: UTF8.self) + "\n", edit: true)
+}
+
+// The answer: "ok", or "ok " and what was done (printed), or an error (printed on standard error, exit 1).
+private func send(_ line: String, edit: Bool = false) -> Never {
     let fd = socket(AF_UNIX, SOCK_STREAM, 0)
     guard fd >= 0 else { fail("socket: \(String(cString: strerror(errno)))") }
     var a = unixAddress(controlPath)
     let ok = withUnsafePointer(to: &a) { $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { connect(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size)) } } == 0
+    // An agent can start it without a window: open -g -a STT --args --background
     guard ok else { fail("STT is not running.") }
     var t = timeval(tv_sec: 10, tv_usec: 0)
     setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &t, socklen_t(MemoryLayout<timeval>.size))
-    _ = "toggle\n".withCString { write(fd, $0, 7) }
-    var buf = [UInt8](repeating: 0, count: 512)
-    let n = read(fd, &buf, buf.count)
+    _ = line.withCString { write(fd, $0, strlen($0)) }
+    var answer = Data(), buf = [UInt8](repeating: 0, count: 1024)
+    while answer.count < 4096 { let n = read(fd, &buf, buf.count); if n <= 0 { break }; answer.append(contentsOf: buf[0..<n]) }
     close(fd)
-    let answer = n > 0 ? String(decoding: buf[0..<n], as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines) : ""
-    if answer == "ok" { exit(0) }
-    fail(answer.isEmpty ? "STT did not answer." : answer)
+    let text = String(decoding: answer, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+    if text == "ok" { exit(0) }
+    if text.hasPrefix("ok ") { print(text.dropFirst(3)); exit(0) }
+    // 0.8 and before know only --toggle.
+    if edit && text == "Unknown command." { fail("This STT has no dictionary commands yet: update it (Check for Updates in its Settings).") }
+    fail(text.isEmpty ? "STT did not answer." : text)
 }
 
 // The app's side: one command per connection, taken only from this same binary, signed as the app is.
@@ -148,6 +177,7 @@ private func toggle() -> Never {
     private var requirement: SecRequirement?
     private var inode: ino_t = 0
     var toggle: () -> String = { "ok" }   // the answer: "ok" or an error to print
+    var edit: ([String]) -> String = { _ in "Unknown command." }   // a dictionary command: "ok …" or an error
 
     func start() {
         var me: SecCode?, staticMe: SecStaticCode?, req: SecRequirement?
@@ -184,9 +214,13 @@ private func toggle() -> Never {
         guard trusted(c) else { _ = "Refused: not \(cliName).\n".withCString { write(c, $0, strlen($0)) }; return }
         var t = timeval(tv_sec: 1, tv_usec: 0)
         setsockopt(c, SOL_SOCKET, SO_RCVTIMEO, &t, socklen_t(MemoryLayout<timeval>.size))
-        var buf = [UInt8](repeating: 0, count: 64)
-        let n = read(c, &buf, buf.count)
-        let reply = n > 0 && String(decoding: buf[0..<n], as: UTF8.self) == "toggle\n" ? toggle() : "Unknown command."
+        // One line, at most 4 KB, read within a second (the timeout above) so a slow sender holds nothing for long.
+        var line = Data(), buf = [UInt8](repeating: 0, count: 1024)
+        while line.count < 4096, line.last != 10 { let n = read(c, &buf, buf.count); if n <= 0 { break }; line.append(contentsOf: buf[0..<n]) }
+        let reply: String
+        if line == Data("toggle\n".utf8) { reply = toggle() }
+        else if line.last == 10, let words = (try? JSONSerialization.jsonObject(with: line)) as? [String], !words.isEmpty { reply = edit(words) }
+        else { reply = "Unknown command." }
         _ = (reply + "\n").withCString { write(c, $0, strlen($0)) }
     }
 

@@ -14,6 +14,11 @@ import AppKit
     let plusMinus = NSSegmentedControl()
     let restorePairs = NSButton(title: "", target: nil, action: nil)
     var rows: [[String]] = []
+    // What the window last showed of the stored lists (2026-11-15, for stt-cli --add-word / --add-pair): the window writes
+    // its whole state when an edit ends or it closes, and while a person types here a change made elsewhere is not shown
+    // yet (reload, below). So a write keeps what was added elsewhere meanwhile: stored now, never shown here, and not typed
+    // here either. What the person removed here was shown, so it stays removed.
+    var shownWords: [String] = [], shownHeard: Set<String> = []
     var beside: (() -> NSWindow?)?
     var takesWords: (() -> Bool)?   // false for a model that ignores the list (Parakeet)
 
@@ -151,6 +156,7 @@ import AppKit
         field.objectValue = Words.words
         fitField()
         rows = Words.replacements.map { [$0.heard, $0.written] }
+        shownWords = Words.words; shownHeard = Set(rows.map { $0[0].lowercased() })
         table.reloadData()
         refresh()
     }
@@ -162,7 +168,10 @@ import AppKit
     }
 
     @objc func wordsEdited() {
-        Words.words = (field.objectValue as? [String]) ?? []
+        let mine = (field.objectValue as? [String]) ?? []
+        let known = Set((shownWords + mine).map { $0.lowercased() })
+        Words.words = mine + Words.words.filter { !known.contains($0.lowercased()) }
+        shownWords = mine
         refresh()
     }
     func controlTextDidEndEditing(_ n: Notification) {
@@ -192,6 +201,7 @@ import AppKit
         wordsEdited()
         Words.restore()
         field.objectValue = Words.words
+        shownWords = Words.words
         fitField()
         refresh()
     }
@@ -201,6 +211,7 @@ import AppKit
         saveRows()
         Words.restorePairs()
         rows = Words.replacements.map { [$0.heard, $0.written] }
+        shownHeard = Set(rows.map { $0[0].lowercased() })
         table.reloadData()
         refresh()
     }
@@ -257,8 +268,11 @@ import AppKit
     }
 
     func saveRows() {
-        Words.replacements = rows.map { ($0[0].trimmingCharacters(in: .whitespaces), $0[1].trimmingCharacters(in: .whitespaces)) }
+        let mine = rows.map { ($0[0].trimmingCharacters(in: .whitespaces), $0[1].trimmingCharacters(in: .whitespaces)) }
             .filter { !$0.0.isEmpty && !$0.1.isEmpty }
+        let known = shownHeard.union(mine.map { $0.0.lowercased() })
+        Words.replacements = mine + Words.replacements.filter { !known.contains($0.heard.lowercased()) }
+        shownHeard = Set(rows.map { $0[0].trimmingCharacters(in: .whitespaces).lowercased() })
         refresh()
     }
 

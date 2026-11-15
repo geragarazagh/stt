@@ -208,6 +208,22 @@ func startKeyTap(_ handler: @escaping (Int, Int, Bool, Bool) -> Bool) -> Bool {
             DispatchQueue.main.async { self.pressed() }   // answered first: an alert it may raise would hold the answer back
             return "ok"
         }
+        control.edit = { [weak self] c in
+            let r: (ok: Bool, answer: String)
+            switch (c.first, c.count) {
+            case ("add-word", 2):
+                r = Words.add(word: c[1])
+                // The window's own note for a model that ignores the list, said to the agent too.
+                if r.ok, self?.current?.id == "parakeet-ultra" {
+                    return "ok " + r.answer + " (Parakeet, the model in use, takes no word list: only replacements work with it.)"
+                }
+            case ("add-pair", 3): r = Words.add(heard: c[1], written: c[2])
+            default: return "Unknown command."
+            }
+            // The dictionary window shows it at once, unless the person is typing there (then once the edit ends).
+            if r.ok { self?.dictionary?.reload(elsewhere: true) }
+            return r.ok ? "ok " + r.answer : r.answer
+        }
         control.start()
         launched = true
         // Opened by Finder with files: only the files window, unless there is no model to work with.
