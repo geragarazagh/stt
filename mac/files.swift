@@ -230,7 +230,10 @@ final class WindowDrop: NSView {
         place(symbol, 113)
         if hasModel() {
             line.stringValue = L("Drop audio or video here"); place(line, 88)
-            detail.stringValue = L("The text is saved next to the file and copied"); place(detail, 68)
+            // Copy Text off: the .txt only (the clipboard still gets the text when the .txt can't be written).
+            detail.stringValue = UserDefaults.standard.object(forKey: "copyText") as? Bool ?? true
+                ? L("The text is saved next to the file and copied") : L("The text is saved next to the file")
+            place(detail, 68)
             place(choose, 27)
         } else {
             line.stringValue = L("No model chosen"); place(line, 80)

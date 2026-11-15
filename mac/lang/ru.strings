@@ -20,6 +20,7 @@
 "Transcription failed" = "Расшифровка не удалась";
 "Cancel Recording" = "Отмена записи";
 "Already in use" = "Уже занято";
+"Copy Text (switch)" = "Копировать текст";
 "Paste Text" = "Вставлять текст";
 "Mute Sound" = "Выключать звук";
 "Pause Media" = "Останавливать медиа";
@@ -51,6 +52,7 @@
 "Done" = "Готово";
 "Drop audio or video here" = "Перетащите сюда аудио или видео";
 "The text is saved next to the file and copied" = "Текст сохранится рядом и скопируется";
+"The text is saved next to the file" = "Текст сохранится рядом";
 "The text is also on the clipboard" = "Текст также в буфере обмена";
 "Choose File…" = "Выбрать файл…";
 "Transcribe" = "Распознать";

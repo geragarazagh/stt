@@ -10,7 +10,7 @@
 //   Whisper, Parakeet and Qwen, each model a single .gguf file. A prebuilt framework, so no Xcode is needed.
 // - Long speech is cut at pauses into pieces of about 30 s, because most models lose accuracy past 30-40 s in one run,
 //   and silence is thrown out, because Whisper invents text on silence («Субтитры сделал...»).
-// - The text stays on the clipboard after pasting: if the paste misses, nothing is lost.
+// - The text stays on the clipboard after pasting (Copy Text, on by default): if the paste misses, nothing is lost.
 // - Feedback while recording is macOS's own orange microphone dot; nothing of ours appears on screen.
 // - No model comes with the app. Each one downloads only after a person agrees to its size, and nothing is asked before
 //   that: microphone, then Accessibility, one at a time, once a model is there.
@@ -336,14 +336,15 @@ func startKeyTap(_ handler: @escaping (Int, Int, Bool, Bool) -> Bool) -> Bool {
 
     // Below Open at Login, in groups with the window's own gap between groups (51 pt from the middle of a group's last row
     // to the middle of the next one's first, as from Language to Recording; 30 pt between rows inside a group), his
-    // order 2026-11-10: Pause Media and Mute Sound together, since both act while recording; Paste Text alone, since it
-    // follows recognition; then the row that transcribes a file, an action and not a setting, with its one switch under it
-    // (0.5: subtitles beside the text, a file's own option, so it sits in the file's group); the dictionary as a group of
-    // its own.
+    // order 2026-11-10: Pause Media and Mute Sound together, since both act while recording; Paste Text and Copy Text
+    // (2026-11-13, his pick of two switches as on the iPhone) together, since both follow recognition, paste first as the
+    // key's main job and copy as what it leaves on the clipboard (Superwhisper and Handy order them so too); then the row
+    // that transcribes a file, an action and not a setting, with its one switch under it (0.5: subtitles beside the text,
+    // a file's own option, so it sits in the file's group); the dictionary as a group of its own.
     // Open at Login (window.swift) sits with its middle 18 pt above this view's top edge, so the rows count down from it.
     func settingsRows() -> NSView {
         let gap: CGFloat = 51, step: CGFloat = 30
-        let pause = 18 - gap, mute = pause - step, paste = mute - gap, file = paste - gap, subtitles = file - step - 2, words = subtitles - gap - 2   // middles
+        let pause = 18 - gap, mute = pause - step, paste = mute - gap, copy = paste - step, file = copy - gap, subtitles = file - step - 2, words = subtitles - gap - 2   // middles
         let history = words - gap
         let height = -history + 14   // the history row's menu is 28 tall and ends at the bottom edge
         let row = NSView(frame: NSRect(x: 0, y: 0, width: 340, height: height))
@@ -370,6 +371,8 @@ func startKeyTap(_ handler: @escaping (Int, Int, Bool, Bool) -> Bool) -> Bool {
         toggle(L("Pause Media"), "pauseMedia", false, pause)
         toggle(L("Mute Sound"), "mute", false, mute)
         toggle(L("Paste Text"), "paste", true, paste)
+        // A key of its own: «Copy Text» is also the history's menu command, «Скопировать текст» there, «Копировать текст» here.
+        toggle(NSLocalizedString("Copy Text (switch)", value: "Copy Text", comment: ""), "copyText", true, copy)
         toggle(L("Save Subtitles (.srt)"), "subtitles", false, subtitles)
         // Two actions, not settings: a real push button each in the column of the key buttons, their frame and style (his
         // word 2026-11-10: a dashed «Drop Here» well didn't look clickable). A push button is 28 tall against a switch's
@@ -884,8 +887,9 @@ func startKeyTap(_ handler: @escaping (Int, Int, Bool, Bool) -> Bool) -> Bool {
     private func filesDone() {
         let stopped = fileJob?.goOn == false
         fileJob = nil; fileQueue = []; fileCount = 0
-        // The clipboard gets the text even when the .txt could not be written, so nothing is lost.
-        if !texts.isEmpty {
+        // The clipboard gets the text even when the .txt could not be written, so nothing is lost; with Copy Text off only
+        // then.
+        if !texts.isEmpty && (isOn("copyText", true) || written.count < texts.count) {
             pasteboard.clearContents()
             pasteboard.setString(texts.joined(separator: "\n\n"), forType: .string)
         }
@@ -910,21 +914,57 @@ func startKeyTap(_ handler: @escaping (Int, Int, Bool, Bool) -> Bool) -> Bool {
             a.runModal()
             return false
         }
-        pasteboard.clearContents()
-        pasteboard.setString(text, forType: .string)
-        guard pasteboard == .general, isOn("paste", true) else { return true }
+        let copy = isOn("copyText", true)
         // STT's main window in front (a recording started with its button, or the key pressed over it): ⌘V would land in
-        // the open recording's text. The text is in the history and on the clipboard. Its other windows take the paste
-        // like any app's (a word said into the Dictionary window, his case of 2026-11-11).
-        if NSWorkspace.shared.frontmostApplication?.processIdentifier == ProcessInfo.processInfo.processIdentifier,
-           let m = main?.window, NSApp.keyWindow === m { return true }
+        // the open recording's text. The text is in the history (and on the clipboard with Copy Text). Its other windows
+        // take the paste like any app's (a word said into the Dictionary window, his case of 2026-11-11).
+        let ownWindow = NSWorkspace.shared.frontmostApplication?.processIdentifier == ProcessInfo.processInfo.processIdentifier
+            && main?.window != nil && NSApp.keyWindow === main?.window
+        let paste = pasteboard == .general && isOn("paste", true) && !ownWindow
+        if copy || paste && !AXIsProcessTrusted() {
+            // Without Accessibility the clipboard is the only way out, whatever Copy Text says.
+            restore = nil
+            pasteboard.clearContents()
+            pasteboard.setString(text, forType: .string)
+        }
+        guard paste else { return true }
         guard AXIsProcessTrusted() else {
             settingsAlert(L("The text is on the clipboard. Pasting it needs Accessibility."), "Privacy_Accessibility")
             return true
         }
+        if !copy { borrowClipboard(text) }
         // 60 ms: an app reading the clipboard straight after the change can still see the old text.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.06) { Self.pressPaste() }
         return true
+    }
+
+    // Paste Text without Copy Text: ⌘V needs the text on the clipboard, so it goes there for a moment and what was there
+    // before comes back (every item, every type it had). Handy, Superwhisper, VoiceInk and Wispr Flow do this by default.
+    // - 2 s before the old contents return (VoiceInk's default): a slow app (a remote desktop, a browser busy with a big
+    //   page) reads the clipboard well after ⌘V, and taking the old contents back too early pastes them instead.
+    // - Only when nothing changed the clipboard meanwhile: a copy made in those 2 s is the person's and stays.
+    // - A dictation inside those 2 s borrows again and keeps the contents saved by the first, not the first's text.
+    // - The text is marked transient (nspasteboard.org), so clipboard history apps such as Maccy skip it.
+    var restore: (items: [NSPasteboardItem], count: Int)?
+
+    func borrowClipboard(_ text: String) {
+        let saved = restore?.items ?? (pasteboard.pasteboardItems ?? []).map { item in
+            let copy = NSPasteboardItem()
+            for type in item.types { if let data = item.data(forType: type) { copy.setData(data, forType: type) } }
+            return copy
+        }
+        pasteboard.clearContents()
+        pasteboard.setString(text, forType: .string)
+        pasteboard.setData(Data(), forType: NSPasteboard.PasteboardType("org.nspasteboard.TransientType"))
+        let count = pasteboard.changeCount
+        restore = (saved, count)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [self] in
+            guard let r = restore, r.count == count else { return }
+            restore = nil
+            guard pasteboard.changeCount == count else { return }
+            pasteboard.clearContents()
+            if !r.items.isEmpty { pasteboard.writeObjects(r.items) }
+        }
     }
 
     static func pressPaste() {

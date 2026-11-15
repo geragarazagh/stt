@@ -180,6 +180,11 @@ extension App {
                     MainActor.assumeIsolated { if s.phase == .recording { s.wave.append(Float.random(in: 0.1...0.9)) } }
                 }
             }
+        case "deliver":
+            // The output path without a microphone: STT_TEXT (and STT_TEXT2 half a second later) delivered as a dictation
+            // 4 s after launch, time for the test to bring another app forward.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 4) { self.deliver(env["STT_TEXT"] ?? "STT test") }
+            if let t = env["STT_TEXT2"] { DispatchQueue.main.asyncAfter(deadline: .now() + 4.5) { self.deliver(t) } }
         case "settings": window?.show()
         case "dictionary": window?.show(); showDictionary()
         case "select": DispatchQueue.main.asyncAfter(deadline: .now() + 1) { s.demoSelection = 3 }

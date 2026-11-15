@@ -24,13 +24,13 @@ Option-Command-Space starts and stops a recording. Hold it longer than half a se
 
 After the first model, macOS asks for Microphone, then Accessibility.
 
-The window is the list of dictations, newest first: each keeps its text, which can be edited in place, and its audio, which can be played. Search goes through the texts; Copy Text, Share (the text or the audio), Transcribe Again with another model and Show in Finder are on the right click; Delete moves recordings to Recently Deleted for 30 days. Several are chosen with Command-A, Shift or Command-click. The record button under the list starts and stops a recording as the shortcut does, and a recording made there is not pasted into the window. Settings (Command-comma) has Check for Updates; Model and Language (Automatic or one language); Recording and Cancel Recording; Open at Login; Pause Media and Mute Sound; Paste Text; Transcribe File with Choose File…; Save Subtitles (.srt); Dictionary with Edit…; History; Quit. Open at Login stays off until it is turned on. Opening the app shows its window. While the window is open, STT is in the Dock and the menu bar like any app; closing the window leaves the shortcut working, with nothing in the Dock or the menu bar.
+The window is the list of dictations, newest first: each keeps its text, which can be edited in place, and its audio, which can be played. Search goes through the texts; Copy Text, Share (the text or the audio), Transcribe Again with another model and Show in Finder are on the right click; Delete moves recordings to Recently Deleted for 30 days. Several are chosen with Command-A, Shift or Command-click. The record button under the list starts and stops a recording as the shortcut does, and a recording made there is not pasted into the window. Settings (Command-comma) has Check for Updates; Model and Language (Automatic or one language); Recording and Cancel Recording; Open at Login; Pause Media and Mute Sound; Paste Text and Copy Text; Transcribe File with Choose File…; Save Subtitles (.srt); Dictionary with Edit…; History; Quit. Open at Login stays off until it is turned on. Opening the app shows its window. While the window is open, STT is in the Dock and the menu bar like any app; closing the window leaves the shortcut working, with nothing in the Dock or the menu bar.
 
 ## For advanced users and language models
 
 Recognition runs on the Mac with an open model of choice: Whisper, Parakeet or Qwen. The network is used only to download that model and to check for updates; language, dictionary, the subtitles switch and the history setting also go through iCloud to the other Macs of the same account. Each recording is kept with its text on the Mac (History, below). No logs, no account of its own.
 
-Audio and video files: Choose File… in Settings, File › Transcribe File… (Command-O), a drop anywhere on either window, or Open With → STT in Finder. The text is saved beside the file as a `.txt` with the same name (`Interview.m4a` gives `Interview.txt`; an existing file is never overwritten, the new one is `Interview (2).txt`) and copied to the clipboard; it is not pasted. A small window shows the progress with Cancel, then the name of the `.txt`, which shows it in Finder when clicked. Several files go one after another, each to its own `.txt`; a dictation made meanwhile waits for the file. With Save Subtitles (.srt) on, an `.srt` with timecodes goes beside the `.txt` under the same name (`Interview.srt`), one subtitle per stretch of speech the model marks. Files opened by another program than Finder or the Dock (`open -a STT` in Terminal, a script) are asked about first, since their text goes to the clipboard.
+Audio and video files: Choose File… in Settings, File › Transcribe File… (Command-O), a drop anywhere on either window, or Open With → STT in Finder. The text is saved beside the file as a `.txt` with the same name (`Interview.m4a` gives `Interview.txt`; an existing file is never overwritten, the new one is `Interview (2).txt`) and copied to the clipboard unless Copy Text is off; it is not pasted. A small window shows the progress with Cancel, then the name of the `.txt`, which shows it in Finder when clicked. Several files go one after another, each to its own `.txt`; a dictation made meanwhile waits for the file. With Save Subtitles (.srt) on, an `.srt` with timecodes goes beside the `.txt` under the same name (`Interview.srt`), one subtitle per stretch of speech the model marks. Files opened by another program than Finder or the Dock (`open -a STT` in Terminal, a script) are asked about first, since their text goes to the clipboard.
 
 ### History
 
@@ -46,7 +46,7 @@ Each dictation is kept with its audio in `~/Library/Application Support/STT/Hist
 - On silence and at the end of speech Whisper writes lines it learned from film subtitles, such as «Субтитры сделал DimaTorzok» or «Продолжение следует...». Such credit lines are removed when they close a piece of speech.
 - Whisper Turbo sometimes stops after a few words (a short «Vielen Dank.» for fifteen seconds of a speech) or loops one phrase. Such a piece is transcribed again without the prompt and then, if still short, at temperature 0.2, and the fuller text is kept. On European Parliament speeches this took German from 22.9 % to 16.1 % of wrong words and Dutch from 22.8 % to 12.4 %; nothing got worse.
 - Filler sounds are removed by a fixed pattern after recognition: э-э, ммм, хм, uh, hmm, äh, euh, yyy and the like, and um in English only (in German and Portuguese it is a word). Words are never changed.
-- The text is pasted into the app in front by a simulated Command-V, which is what Accessibility is for, and stays on the clipboard in case the paste misses. While a password field is active (macOS’s Secure Input), the text is neither pasted nor put on the clipboard.
+- The text is pasted into the app in front by a simulated Command-V, which is what Accessibility is for, and stays on the clipboard in case the paste misses. With Copy Text off, whatever was on the clipboard before comes back two seconds after the paste; with Paste Text off, the text only goes to the clipboard; with both off, only to the history. While a password field is active (macOS’s Secure Input), the text is neither pasted nor put on the clipboard.
 - macOS keeps Option-Command-Space for its own search, so STT catches it with an event tap at the head of the session, which also needs Accessibility.
 
 ### Models
@@ -129,9 +129,19 @@ The feed and the disk image are signed with an EdDSA key, and Sparkle installs o
 
 Settings (model, language, shortcuts, switches, dictionary) and the time of the last update check are in the defaults of `com.geragaraza.stt`, models in `~/Library/Application Support/STT/models`, the history in `~/Library/Application Support/STT/History`. The four synced settings are also kept for the iCloud account by the key-value service of macOS; they take no iCloud storage.
 
-To remove STT: Quit in Settings, delete the folder `~/Library/Application Support/STT` (models and history), move `STT.app` to the Trash and run `defaults delete com.geragaraza.stt`. Its Microphone and Accessibility entries are removed in System Settings, Privacy & Security.
+To remove STT: Quit in Settings, delete the folder `~/Library/Application Support/STT` (models and history), move `STT.app` to the Trash and clear its settings with this command:
 
-Installed with Homebrew, `brew uninstall --zap stt` quits it and removes the app, its settings, the models and the history; the Microphone and Accessibility entries stay for System Settings.
+```sh
+defaults delete com.geragaraza.stt
+```
+
+Installed with Homebrew, this command quits it and removes the app, its settings, the models and the history:
+
+```sh
+brew uninstall --zap stt
+```
+
+Either way, its Microphone and Accessibility entries are removed in System Settings, Privacy & Security.
 
 ### Shortcuts
 
@@ -139,7 +149,13 @@ STT adds four actions to the Shortcuts app: Record is one press of the shortcut 
 
 ### Command line
 
-Homebrew links the command `stt-cli`; with the disk image, `ln -s /Applications/STT.app/Contents/MacOS/STT /usr/local/bin/stt-cli` makes it. It uses the model, language and dictionary chosen in Settings.
+Homebrew links the command `stt-cli`; with the disk image, this command makes it:
+
+```sh
+ln -s /Applications/STT.app/Contents/MacOS/STT /usr/local/bin/stt-cli
+```
+
+It uses the model, language and dictionary chosen in Settings.
 
 ```sh
 stt-cli Interview.m4a > Interview.txt   # the text

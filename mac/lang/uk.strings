@@ -15,11 +15,12 @@
 "Loading…" = "Завантаження…";
 "Downloading…" = "Завантаження…";
 "STT has no access to the microphone." = "STT не має доступу до мікрофона.";
-"The text is on the clipboard. Pasting it needs Accessibility." = "Текст у буфері обміну. Для вставлення потрібен Універсальний доступ.";
+"The text is on the clipboard. Pasting it needs Accessibility." = "Текст у буфері обміну. Для вставлення потрібен дозвіл «Доступність».";
 "Recording failed" = "Запис не вдався";
 "Transcription failed" = "Розпізнавання не вдалося";
 "Cancel Recording" = "Скасування запису";
 "Already in use" = "Уже зайнято";
+"Copy Text (switch)" = "Копіювати текст";
 "Paste Text" = "Вставляти текст";
 "Mute Sound" = "Вимикати звук";
 "Pause Media" = "Зупиняти медіа";
@@ -51,6 +52,7 @@
 "Done" = "Готово";
 "Drop audio or video here" = "Перетягніть сюди аудіо або відео";
 "The text is saved next to the file and copied" = "Текст збережеться поруч і скопіюється";
+"The text is saved next to the file" = "Текст збережеться поруч";
 "The text is also on the clipboard" = "Текст також у буфері обміну";
 "Choose File…" = "Вибрати файл…";
 "Transcribe" = "Розпізнати";
@@ -117,7 +119,7 @@
 "Hide STT" = "Сховати STT";
 "Hide Others" = "Сховати інші";
 "Show All" = "Показати всі";
-"Quit STT" = "Вийти з STT";
+"Quit STT" = "Завершити STT";
 "New Recording" = "Новий запис";
 "Transcribe File…" = "Розпізнати файл…";
 "Close" = "Закрити";
