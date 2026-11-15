@@ -109,7 +109,7 @@ cat > "$app/Contents/Info.plist" <<PLIST
 <key>CFBundleDisplayName</key><string>$name</string>
 <key>CFBundleExecutable</key><string>STT</string>
 <key>CFBundleDevelopmentRegion</key><string>en</string>
-<key>CFBundleLocalizations</key><array><string>en</string><string>ru</string><string>uk</string></array>
+<key>CFBundleLocalizations</key><array><string>en</string></array>
 <key>CFBundleIconFile</key><string>AppIcon</string>
 <key>CFBundleIconName</key><string>AppIcon</string>
 <key>CFBundlePackageType</key><string>APPL</string>
@@ -134,11 +134,7 @@ cat > "$app/Contents/Info.plist" <<PLIST
 </dict></plist>
 PLIST
 
-for l in ru uk; do
-  mkdir "$app/Contents/Resources/$l.lproj"; cp mac/lang/$l.strings "$app/Contents/Resources/$l.lproj/Localizable.strings"
-  cp mac/lang/$l.InfoPlist.strings "$app/Contents/Resources/$l.lproj/InfoPlist.strings"
-done
-mkdir "$app/Contents/Resources/en.lproj"   # English is the text in the code
+mkdir "$app/Contents/Resources/en.lproj"   # English is the text in the code, and the only language (since 2026-11-15)
 
 mkdir -p "$app/Contents/Library/LaunchAgents"
 cat > "$app/Contents/Library/LaunchAgents/$id.login.plist" <<PLIST

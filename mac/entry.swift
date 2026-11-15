@@ -371,8 +371,7 @@ func startKeyTap(_ handler: @escaping (Int, Int, Bool, Bool) -> Bool) -> Bool {
         toggle(L("Pause Media"), "pauseMedia", false, pause)
         toggle(L("Mute Sound"), "mute", false, mute)
         toggle(L("Paste Text"), "paste", true, paste)
-        // A key of its own: «Copy Text» is also the history's menu command, «Скопировать текст» there, «Копировать текст» here.
-        toggle(NSLocalizedString("Copy Text (switch)", value: "Copy Text", comment: ""), "copyText", true, copy)
+        toggle(L("Copy Text"), "copyText", true, copy)
         toggle(L("Save Subtitles (.srt)"), "subtitles", false, subtitles)
         // Two actions, not settings: a real push button each in the column of the key buttons, their frame and style (his
         // word 2026-11-10: a dashed «Drop Here» well didn't look clickable). A push button is 28 tall against a switch's

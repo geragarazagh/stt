@@ -27,7 +27,7 @@ targets:
       - path: ../shared
       - path: ../vendor
         includes: ["*.swift", "silero-vad-v6.2-F32.gguf"]
-      - gen/loc        # en/ru/uk .lproj, merged by `make` from ../mac/lang and lang/
+      - gen/loc        # en.lproj alone (English only since 2026-11-15), written by `make`
       - gen/AppIcon.icon
       - Symbols.xcassets
     info:
@@ -37,7 +37,7 @@ targets:
         CFBundleName: STT
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
-        CFBundleLocalizations: [en, ru, uk]
+        CFBundleLocalizations: [en]
         NSMicrophoneUsageDescription: Speech is turned into text on this iPhone and goes nowhere.
         UILaunchScreen: {}
         UIBackgroundModes: [audio]
