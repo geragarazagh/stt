@@ -34,7 +34,7 @@ Audio and video files: Choose File… in Settings, File › Transcribe File… (
 
 ### History
 
-Each dictation is kept with its audio in `~/Library/Application Support/STT/History`: one store with the texts and one AAC file per recording, about 256 KB a minute. History in Settings keeps all, 30 days (the default), 7 days, the last 100, or none; a choice that would erase recordings asks once, with their number. Delete moves a recording to Recently Deleted for 30 days, where Recover brings it back and Delete Forever erases it with its audio. Transcribe Again runs the kept audio through any downloaded model and replaces the text. A text that a password field kept off the clipboard is not kept either.
+Each dictation is kept with its audio in `~/Library/Application Support/STT/History`: one store with the texts and one AAC file per recording, about 256 KB a minute. History in Settings keeps them for 1 day, 7 days, 30 days (the default), 1 year or forever, or not at all (Don’t Keep); a choice that would erase recordings asks once, with their number. Delete moves a recording to Recently Deleted for 30 days, where Recover brings it back and Delete Forever erases it with its audio. Transcribe Again runs the kept audio through any downloaded model and replaces the text. A text that a password field kept off the clipboard is not kept either.
 
 ### How it works
 
@@ -171,14 +171,14 @@ Files are read with the rights of the program that runs the command, not the app
 
 ### Details
 
-- Version: 0.8.
+- Version: 0.9.
 - Bundle ID: `com.geragaraza.stt`.
 - Download: `STT.dmg`, 4.4 MB.
 - Models: downloaded separately, 740 to 2,185 MB each.
 - Requires: Apple silicon, macOS 13 or later.
 - Permissions: Microphone, Accessibility. Network: to download a model and to check for updates; iCloud for four settings.
 - Signed with a Developer ID and notarized by Apple.
-- Code: Swift with AppKit, SwiftUI and Core Data, about 3,400 lines, the transcribe.cpp framework, and Sparkle for updates.
+- Code: Swift with AppKit, SwiftUI and Core Data, about 3,600 lines, the transcribe.cpp framework, and Sparkle for updates.
 - License: MIT.
 
 ### Build
