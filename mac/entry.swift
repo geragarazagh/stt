@@ -200,7 +200,7 @@ func startKeyTap(_ handler: @escaping (Int, Int, Bool, Bool) -> Bool) -> Bool {
         if let m = current {
             load(m)
             if window?.wantedAtLaunch == true { showMain(); demo() }
-        } else { window?.show() }
+        } else { window?.show(); demo() }   // demo(): the test copy only
         if AXIsProcessTrusted() { tryTap() }
         control.toggle = { [weak self] in
             guard let self else { return "STT is not ready." }
