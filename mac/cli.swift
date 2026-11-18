@@ -156,19 +156,40 @@ private func send(_ line: String, edit: Bool = false) -> Never {
     let ok = withUnsafePointer(to: &a) { $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { connect(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size)) } } == 0
     // An agent can start it without a window: open -g -a STT --args --background
     guard ok else { fail("STT is not running.") }
-    var t = timeval(tv_sec: 10, tv_usec: 0)
-    setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &t, socklen_t(MemoryLayout<timeval>.size))
     _ = line.withCString { write(fd, $0, strlen($0)) }
-    var answer = Data(), buf = [UInt8](repeating: 0, count: 1024)
-    while answer.count < 4096 { let n = read(fd, &buf, buf.count); if n <= 0 { break }; answer.append(contentsOf: buf[0..<n]) }
+    let answer = readSocket(fd, limit: 4096, seconds: 10, toNewline: false)
     close(fd)
-    let text = String(decoding: answer, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+    // Through printable() like any text STT hands on (engine.swift): the answer repeats the word it was given, and goes to a
+    // terminal or an agent's log.
+    let text = printable(String(decoding: answer, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines))
     if text == "ok" { exit(0) }
     if text.hasPrefix("ok ") { print(text.dropFirst(3)); exit(0) }
     // 0.8 and before know only --toggle.
     if edit && text == "Unknown command." { fail("This STT has no dictionary commands yet: update it (Check for Updates in its Settings).") }
     fail(text.isEmpty ? "STT did not answer." : text)
 }
+
+// BEGIN readSocket (tests/socket-deadline compiles this block on its own)
+// Reads up to `limit` bytes, to the end of the stream or (toNewline) the first newline, within `seconds` IN ALL: a timeout
+// per read alone (SO_RCVTIMEO, what this was before security pass 4) lets a sender that trickles a byte a little under
+// the timeout hold the reader as long as it likes, and on the app's side the reader is the main thread with the key tap.
+func readSocket(_ fd: Int32, limit: Int, seconds: Double, toNewline: Bool) -> Data {
+    let end = DispatchTime.now().uptimeNanoseconds + UInt64(seconds * 1e9)
+    var data = Data(), buf = [UInt8](repeating: 0, count: 1024)
+    while data.count < limit, !(toNewline && data.last == 10) {
+        let now = DispatchTime.now().uptimeNanoseconds
+        guard now < end else { break }
+        let left = end - now
+        // Never 0 and 0: that timeval means no timeout at all.
+        var t = timeval(tv_sec: Int(left / 1_000_000_000), tv_usec: Int32(max(1, (left % 1_000_000_000) / 1000)))
+        setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &t, socklen_t(MemoryLayout<timeval>.size))
+        let n = read(fd, &buf, min(buf.count, limit - data.count))
+        if n <= 0 { break }
+        data.append(contentsOf: buf[0..<n])
+    }
+    return data
+}
+// END readSocket
 
 // The app's side: one command per connection, taken only from this same binary, signed as the app is.
 @MainActor final class Control {
@@ -212,11 +233,8 @@ private func send(_ line: String, edit: Bool = false) -> Never {
         defer { close(c) }
         // The peer is checked before anything is read, so a stranger can't hold the main thread (and the key tap on it).
         guard trusted(c) else { _ = "Refused: not \(cliName).\n".withCString { write(c, $0, strlen($0)) }; return }
-        var t = timeval(tv_sec: 1, tv_usec: 0)
-        setsockopt(c, SOL_SOCKET, SO_RCVTIMEO, &t, socklen_t(MemoryLayout<timeval>.size))
-        // One line, at most 4 KB, read within a second (the timeout above) so a slow sender holds nothing for long.
-        var line = Data(), buf = [UInt8](repeating: 0, count: 1024)
-        while line.count < 4096, line.last != 10 { let n = read(c, &buf, buf.count); if n <= 0 { break }; line.append(contentsOf: buf[0..<n]) }
+        // One line, at most 4 KB, read within a second in all, so a slow sender holds nothing for long.
+        let line = readSocket(c, limit: 4096, seconds: 1, toNewline: true)
         let reply: String
         if line == Data("toggle\n".utf8) { reply = toggle() }
         else if line.last == 10, let words = (try? JSONSerialization.jsonObject(with: line)) as? [String], !words.isEmpty { reply = edit(words) }

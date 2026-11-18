@@ -63,6 +63,17 @@ enum Keep: Equatable {
     }
 }
 
+// The keep menu both apps show, one scale in one order (0.3, his look at 0.2 (3): «шкала, понятная и одинаковая на
+// Mac и iPhone»; his choice of variant A 2026-11-12 15:49 over B, the scale and his own «Last N», and C, one switch).
+// Apple's own lists, read from iOS 27.2 and macOS 27: Messages «Keep Messages» 30 Days, 1 Year, Forever; Voice Memos
+// «Clear Deleted» Immediately, After 1 Day, After 7 Days, After 30 Days, Never; Safari «Remove history items» after
+// one day … one year, Manually. Always time, short to long, the open end last, never a number typed in and never a
+// count beside periods. A «Last N» set before 0.3 stays as it is and is shown with its number until changed.
+enum KeepMenu {
+    static let scale: [(Keep, String)] = [(.never, "Don’t Keep"), (.days(1), "1 Day"), (.days(7), "7 Days"), (.days(30), "30 Days"),
+                                          (.days(365), "1 Year"), (.all, "Forever")]
+}
+
 @MainActor final class History {
     static let shared = History()
 

@@ -1,0 +1,47 @@
+#!/bin/zsh
+# Tests readSocket (mac/cli.swift), the reader of the app's socket and of stt-cli's answer: its time limit is for the whole
+# read, so a sender that trickles a byte at a time can't hold the app's main thread (security pass 4, 2026-11-17).
+# Compiles the function as it is in cli.swift (between its BEGIN and END lines) with a small driver; needs no app.
+#   tests/socket-deadline
+set -eu
+cd "${0:A:h}/.."
+tmp=$(mktemp -d); trap 'rm -rf $tmp' EXIT
+{ echo 'import Foundation'; sed -n '/^\/\/ BEGIN readSocket/,/^\/\/ END readSocket/p' mac/cli.swift; cat <<'SWIFT'
+// The trickling writer goes on after the reader closed its end: a write there must fail, not kill the test.
+signal(SIGPIPE, SIG_IGN)
+setvbuf(stdout, nil, _IOLBF, 0)
+var fails = 0
+// A socket pair; `send` runs on another thread: (delay before each chunk, chunk).
+func run(_ name: String, limit: Int = 4096, seconds: Double, newline: Bool, _ chunks: [(Double, String)], close: Bool = true,
+         wantText: String, under: Double, over: Double = 0) {
+    var fds: [Int32] = [0, 0]
+    guard socketpair(AF_UNIX, SOCK_STREAM, 0, &fds) == 0 else { print("FAIL  \(name): socketpair"); fails += 1; return }
+    let writer = fds[1]
+    Thread.detachNewThread {
+        for (delay, chunk) in chunks { Thread.sleep(forTimeInterval: delay); _ = chunk.withCString { write(writer, $0, strlen($0)) } }
+        if close { Darwin.close(writer) }
+    }
+    let start = Date()
+    let got = String(decoding: readSocket(fds[0], limit: limit, seconds: seconds, toNewline: newline), as: UTF8.self)
+    let took = Date().timeIntervalSince(start)
+    Darwin.close(fds[0])
+    if got == wantText && took < under && took >= over { print("ok    \(name) (\(String(format: "%.2f", took)) s)") }
+    else { print("FAIL  \(name): «\(got)» in \(String(format: "%.2f", took)) s (wanted «\(wantText)», \(over)..\(under) s)"); fails += 1 }
+}
+// The attack: a byte every 0.4 s, under a 1 s timeout per read. Before the fix this took 20 x 0.4 = 8 s.
+run("trickle stops at 1 s in all", seconds: 1, newline: true, Array(repeating: (0.4, "a"), count: 20), close: false,
+    wantText: "aa", under: 1.3, over: 0.95)
+run("a whole line at once", seconds: 1, newline: true, [(0, "toggle\n")], close: false, wantText: "toggle\n", under: 0.3)
+run("a line in pieces within the second", seconds: 1, newline: true, [(0.1, "[\"add-"), (0.1, "word\",\"x\"]\n")], close: false,
+    wantText: "[\"add-word\",\"x\"]\n", under: 0.6)
+run("stops at the newline, not waiting for more", seconds: 1, newline: true, [(0, "toggle\n"), (0.6, "more")], close: false,
+    wantText: "toggle\n", under: 0.3)
+run("silence: nothing after 1 s", seconds: 1, newline: true, [], close: false, wantText: "", under: 1.3, over: 0.95)
+run("answer read to the end", seconds: 10, newline: false, [(0.05, "ok Added: "), (0.05, "x\n")], wantText: "ok Added: x\n", under: 0.5)
+run("limit holds", limit: 10, seconds: 1, newline: false, [(0, String(repeating: "b", count: 50))], wantText: String(repeating: "b", count: 10), under: 0.3)
+print("\(fails) failed")
+exit(fails > 0 ? 1 : 0)
+SWIFT
+} > $tmp/t.swift
+swiftc -O -o $tmp/t $tmp/t.swift
+$tmp/t

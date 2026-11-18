@@ -1,14 +1,16 @@
 #!/bin/zsh
 # Tests stt-cli --add-word / --add-pair (cli.swift, Words.add in shared/dictionary.swift) against a running test copy.
 #   TEST=1 ./build, then: tests/dictionary-command "STT Test.app"
-# Only the test copy (its own id, defaults and socket), never STT.app: the test empties the dictionary it writes to. On
-# his Mac it runs in the agents' own session, so the window the test copy opens at launch never reaches his screen:
-#   cs run zsh /Users/Shared/claude/stt-test/dictionary-command "/Users/Shared/claude/stt-test/STT Test.app"
-# (claude can't read his home: copy the app and this script to /Users/Shared/claude/stt-test first.)
+# Only the test copy (its own id, defaults and socket), never STT.app: the test empties the dictionary it writes to. It
+# runs in a test machine (tart, over ssh), so the window the test copy opens at launch never reaches the person's screen;
+# passed there on macOS 26.6.2 and 27.2 (2026-11-18).
 # Not covered here: the Dictionary window open during a command (its edit keeps what was added meanwhile); that was
 # checked by hand through AX (stt.md, «Checked»).
 set -u
 app=${1:?usage: dictionary-command "STT Test.app"}
+# A full path: `open -a` with a bare name launches whichever STT Test.app LaunchServices knows, an older build left
+# elsewhere included, and the cli of this build is then refused by it (2026-11-18, tahoe: 20 cases «Refused: not stt-cli.»).
+app=${app:A}
 id=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Contents/Info.plist")
 [ "$id" = com.geragaraza.stt.test ] || { echo "not the test copy: $id"; exit 2; }
 cli=$app/Contents/MacOS/STT

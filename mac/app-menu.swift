@@ -46,23 +46,30 @@ extension App {
 
     // MARK: keep
 
-    static let keeps: [(Keep, String)] = [(.all, "Keep All"), (.days(30), "30 Days"), (.days(7), "7 Days"),
-                                          (.last(100), "Last 100"), (.never, "Don’t Keep")]
-
+    // One scale, short to long (KeepMenu): off, the periods, the open end, separated as macOS groups a pop-up's kinds.
+    // A «Last N» set before 0.3 stays listed with its number.
     func rebuildKeep() {
-        keepPicker.removeAllItems()
-        for (k, title) in App.keeps {
-            keepPicker.addItem(withTitle: L(title))
-            keepPicker.lastItem?.representedObject = k.string
-        }
         let now = History.shared.keep
-        keepPicker.selectItem(at: App.keeps.firstIndex { $0.0 == now } ?? 0)
+        keepPicker.removeAllItems()
+        func add(_ k: Keep, _ title: String) {
+            keepPicker.addItem(withTitle: title)
+            keepPicker.lastItem?.representedObject = k.string
+            if k == now { keepPicker.select(keepPicker.lastItem) }
+        }
+        for (i, (k, title)) in KeepMenu.scale.enumerated() {
+            if i == 1 || i == KeepMenu.scale.count - 1 { keepPicker.menu?.addItem(.separator()) }
+            add(k, L(title))
+        }
+        if case .last(let n) = now { keepPicker.menu?.addItem(.separator()); add(now, String(format: L("Last %d"), n)) }
     }
 
     // A choice that would throw recordings away asks once, with the number.
     @objc func pickedKeep() {
         guard let raw = keepPicker.selectedItem?.representedObject as? String else { return }
-        let new = Keep(raw)
+        setKeep(Keep(raw))
+    }
+
+    private func setKeep(_ new: Keep) {
         let gone = History.shared.wouldErase(new)
         if gone > 0 {
             let a = NSAlert()
@@ -72,9 +79,10 @@ extension App {
             a.addButton(withTitle: L("Cancel"))
             if a.runModal() != .alertFirstButtonReturn { rebuildKeep(); return }
         }
-        Store.shared.set(raw, Keep.key)
+        Store.shared.set(new.string, Keep.key)
         History.shared.purge()
         Shelf.shared.reload()
+        rebuildKeep()
     }
 
     // MARK: transcribe again
@@ -186,6 +194,9 @@ extension App {
             DispatchQueue.main.asyncAfter(deadline: .now() + 4) { self.deliver(env["STT_TEXT"] ?? "STT test") }
             if let t = env["STT_TEXT2"] { DispatchQueue.main.asyncAfter(deadline: .now() + 4.5) { self.deliver(t) } }
         case "settings": window?.show()
+        case "keep":   // the keep menu open over the Settings window, for its shots
+            window?.show(); NSApp.activate(ignoringOtherApps: true)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { self.keepPicker.performClick(nil) }
         case "dictionary": window?.show(); showDictionary()
         case "select": DispatchQueue.main.asyncAfter(deadline: .now() + 1) { s.demoSelection = 3 }
         case "confirm": DispatchQueue.main.asyncAfter(deadline: .now() + 1) { s.folder = .deleted; s.demoAsk = true; s.demoSelection = 2 }

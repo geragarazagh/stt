@@ -1,0 +1,36 @@
+#!/bin/zsh
+# Tests Store.valid (shared/store.swift), the check of a word list or a replacement table that comes from iCloud: the same
+# rule as a word an agent adds (Words.problem), so no C0 or C1 control, no bidi mark, at most 200 characters (security pass
+# 4, 2026-11-17). Compiles shared/ and the engine's bindings with a small driver; needs no app and touches no settings.
+#   tests/synced-dictionary
+set -eu
+cd "${0:A:h}/.."
+[ -d vendor/CTranscribe.framework ] || { echo "run ./build once first (it fetches vendor/CTranscribe.framework)"; exit 2; }
+tmp=$(mktemp -d); trap 'rm -rf $tmp' EXIT
+cat > $tmp/main.swift <<'SWIFT'
+import Foundation
+var fails = 0
+func check(_ name: String, _ got: Bool, _ want: Bool) { if got == want { print("ok    \(name)") } else { print("FAIL  \(name)"); fails += 1 } }
+MainActor.assumeIsolated { check("plain words", Store.valid(["GitHub", "Claude Code", "ватага"], "words"), true) }
+MainActor.assumeIsolated { check("an empty word (an older version's)", Store.valid(["GitHub", ""], "words"), true) }
+MainActor.assumeIsolated { check("C0 escape", Store.valid(["a\u{1B}[0m"], "words"), false) }
+MainActor.assumeIsolated { check("C1 U+0085", Store.valid(["a\u{85}b"], "words"), false) }
+MainActor.assumeIsolated { check("C1 U+009B (CSI)", Store.valid(["a\u{9B}31m"], "words"), false) }
+MainActor.assumeIsolated { check("RLO U+202E", Store.valid(["a\u{202E}b"], "words"), false) }
+MainActor.assumeIsolated { check("RLM U+200F", Store.valid(["a\u{200F}b"], "words"), false) }
+MainActor.assumeIsolated { check("ALM U+061C", Store.valid(["a\u{061C}b"], "words"), false) }
+MainActor.assumeIsolated { check("DEL", Store.valid(["a\u{7F}"], "words"), false) }
+MainActor.assumeIsolated { check("201 characters", Store.valid([String(repeating: "a", count: 201)], "words"), false) }
+MainActor.assumeIsolated { check("200 characters", Store.valid([String(repeating: "a", count: 200)], "words"), true) }
+MainActor.assumeIsolated { check("pairs plain", Store.valid([["клод", "Claude"], ["github", "GitHub"]], "replacements"), true) }
+MainActor.assumeIsolated { check("pair with C1 written", Store.valid([["x", "a\u{9B}b"]], "replacements"), false) }
+MainActor.assumeIsolated { check("pair with LRM heard", Store.valid([["a\u{200E}b", "x"]], "replacements"), false) }
+MainActor.assumeIsolated { check("pair of three", Store.valid([["a", "b", "c"]], "replacements"), false) }
+MainActor.assumeIsolated { check("2001 words", Store.valid(Array(repeating: "a", count: 2001), "words"), false) }
+print("\(fails) failed"); exit(fails > 0 ? 1 : 0)
+
+SWIFT
+swiftc -target arm64-apple-macos13.0 -module-name STT -F vendor -framework CTranscribe -Xlinker -rpath -Xlinker "$PWD/vendor" \
+  -lc++ -lz -framework Accelerate -framework Metal -framework MetalKit shared/*.swift vendor/*.swift $tmp/main.swift -o $tmp/t 2>&1 \
+  | grep -E "error:" || true
+$tmp/t

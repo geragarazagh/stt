@@ -6,6 +6,7 @@ import SwiftUI
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var words = false
+    @State private var keepPage = false   // Debug: the shots of the keep page
     private var d: Dictation { Dictation.shared }
 
     var body: some View {
@@ -17,12 +18,13 @@ struct SettingsView: View {
                 Section {
                     NavigationLink("Dictionary") { DictionaryView() }
                 }
-                Section { KeepPicker() } footer: { Text("Texts and audio stay on this iPhone; the setting is the same on every device with this iCloud account.") }
+                Section { KeepRow() } footer: { Text("Texts and audio stay on this iPhone; the setting is the same on every device with this iCloud account.") }
                 Section {} footer: { About() }
             }
             .navigationDestination(isPresented: $words) { DictionaryView() }
             #if DEBUG
-            .onAppear { if Demo.sheet == "dictionary" { words = true } }
+            .onAppear { if Demo.sheet == "dictionary" { words = true }; if Demo.sheet == "keep" { keepPage = true } }
+            .navigationDestination(isPresented: $keepPage) { KeepPage(keep: .constant(History.shared.keep), pick: { _ in }) }
             #endif
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
@@ -118,29 +120,56 @@ struct CopyTextFooter: View {
     var body: some View { Text("The text goes to the clipboard as soon as it is ready.") }
 }
 
-// How much history is kept: the same choices and words as the Mac's Settings window; synced like the language. A choice
-// that would delete recordings asks once, with the number.
-struct KeepPicker: View {
-    static let choices: [(Keep, LocalizedStringKey)] = [(.all, "Keep All"), (.days(30), "30 Days"), (.days(7), "7 Days"),
-                                                       (.last(100), "Last 100"), (.never, "Don’t Keep")]
-    @State private var chosen = History.shared.keep.string
-    @State private var asking: (raw: String, count: Int)?
+// How much history is kept: the Mac's scale and words (KeepMenu), synced like the language. As in Settings > Messages
+// > Keep Messages and Voice Memos' Clear Deleted, the row shows the choice and opens a page of the choices with a tick.
+// A choice that would delete recordings asks once, with the number.
+struct KeepRow: View {
+    @State private var keep = History.shared.keep
+    @State private var asking: (keep: Keep, count: Int)?
     var body: some View {
-        Picker("History", selection: Binding(get: { chosen }, set: { pick($0) })) {
-            ForEach(KeepPicker.choices, id: \.0.string) { Text($0.1).tag($0.0.string) }
+        NavigationLink { KeepPage(keep: $keep, pick: pick) } label: {
+            LabeledContent("History") { Text(KeepRow.title(keep)) }
         }
         .confirmationDialog("Delete \(asking?.count ?? 0) recordings?", isPresented: Binding(get: { asking != nil }, set: { if !$0 { asking = nil } }),
                             titleVisibility: .visible) {
-            Button("Delete \(asking?.count ?? 0) Recordings", role: .destructive) { if let a = asking { apply(a.raw) } }
+            Button("Delete \(asking?.count ?? 0) Recordings", role: .destructive) { if let a = asking { apply(a.keep) } }
         } message: { Text("These recordings will be deleted. This action cannot be undone.") }
     }
-    private func pick(_ raw: String) {
-        let gone = History.shared.wouldErase(Keep(raw))
-        if gone > 0 { asking = (raw, gone) } else { apply(raw) }
+    static func title(_ k: Keep) -> String {
+        if case .last(let n) = k { return String(localized: "Last \(n)") }
+        return KeepMenu.scale.first { $0.0 == k }.map { String(localized: String.LocalizationValue($0.1)) } ?? ""
     }
-    private func apply(_ raw: String) {
-        chosen = raw
-        Store.shared.set(raw, Keep.key)
+    private func pick(_ k: Keep) {
+        let gone = History.shared.wouldErase(k)
+        if gone > 0 { asking = (k, gone) } else { apply(k) }
+    }
+    private func apply(_ k: Keep) {
+        keep = k
+        Store.shared.set(k.string, Keep.key)
         History.shared.purge(); Shelf.shared.reload()
+    }
+}
+
+// The choices, a tick on the chosen one; a «Last N» set before 0.3 is listed last with its number while it holds.
+struct KeepPage: View {
+    @Binding var keep: Keep
+    var pick: (Keep) -> Void
+    var body: some View {
+        List {
+            Section {
+                ForEach(KeepMenu.scale, id: \.0.string) { k, title in
+                    row(Text(LocalizedStringKey(title)), on: keep == k) { pick(k) }
+                }
+                if case .last = keep { row(Text(KeepRow.title(keep)), on: true) {} }
+            }
+        }
+        .navigationTitle("History")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+    private func row(_ label: Text, on: Bool, _ action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack { label; Spacer(); if on { Image(systemName: "checkmark").foregroundStyle(Color.accentColor).fontWeight(.semibold) } }
+        }
+        .tint(.primary)   // black or white words, the tick in the accent colour, as Settings' own lists
     }
 }

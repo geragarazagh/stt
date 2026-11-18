@@ -4,32 +4,45 @@
 set -e
 cd "${0:A:h}"
 # It changes per release, not per build.
-version=0.8 min=13.0 id=com.geragaraza.stt app=STT.app engine=0.4.1 name=STT
+version=0.9 min=13.0 id=com.geragaraza.stt app=STT.app engine=0.4.1 name=STT
 # A test copy beside the real one (TEST=1): its own id, name and folder, so it shares no settings, grants or history.
 [ -n "${TEST:-}" ] && { id=com.geragaraza.stt.test app="STT Test.app" name="STT Test"; }
 tmp=$(mktemp -d); trap 'rm -rf $tmp' EXIT
 rm -rf "$app" STT.zip
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources" "$app/Contents/Frameworks"
 
+# vendor/ keeps the two frameworks below between builds, and whatever lies there is compiled against and signed with our
+# Developer ID. So each is checked at every build, not only when it is downloaded (security pass 4, 2026-11-17: a cached
+# framework was trusted as it lay): its whole tree (every file's bytes and every link's target, by path) must hash to
+# what the pinned download unpacks to. Anything else there (a framework thinned or re-signed by hand, as CTranscribe was
+# from 2026-11-12 to 11-18) is refused; deleting it makes the build fetch and check it again.
+treesha() { (cd "$1" && find . \( -type f -o -type l \) | LC_ALL=C sort | while IFS= read -r f; do
+  if [ -L "$f" ]; then echo "l $(readlink "$f") $f"; else echo "f $(shasum -a 256 < "$f" | cut -c1-64) $f"; fi
+done) | shasum -a 256 | cut -c1-64; }
+same() { [ "$(treesha vendor/$1.framework)" = $2 ] || { echo "vendor/$1.framework is not what the pinned download unpacks to: delete it and build again"; exit 1; }; }
+
 # The engine's prebuilt framework, from its release. vendor/*.swift are its Swift bindings at the same tag.
 # Checked against a pinned checksum, like Sparkle below: the release is not immutable and carries no signature
-# (security audit 2026-11-10), and the bytes get signed with our Developer ID. Change engine_sha with engine.
+# (security audit 2026-11-10), and the bytes get signed with our Developer ID. Change engine_sha and engine_tree with
+# engine (engine_tree: `treesha` of the fresh vendor/CTranscribe.framework).
 engine_sha=fb5646e564036a6c49659e3efcf72eb567af20da31b8569045c9a08181d35126
+engine_tree=cc19809dea31bbd6555157820ec4f6dcf38ab3fc79c01508d7b4408d90ad9605
 if [ ! -d vendor/CTranscribe.framework ]; then
   curl -fsSL -o $tmp/x.zip https://github.com/handy-computer/transcribe.cpp/releases/download/v$engine/TranscribeCpp.xcframework.zip
   [ "$(shasum -a 256 $tmp/x.zip | cut -d' ' -f1)" = $engine_sha ] || { echo "CTranscribe checksum mismatch"; exit 1; }
   unzip -q $tmp/x.zip -d $tmp/x
   cp -R $tmp/x/TranscribeCpp.xcframework/macos-arm64_x86_64/CTranscribe.framework vendor/
 fi
+same CTranscribe $engine_tree
 cp -R vendor/CTranscribe.framework "$app/Contents/Frameworks/"
 # Apple silicon only, like the other apps; the Intel half of the framework is 6 MB of nothing here.
 bin=$app/Contents/Frameworks/CTranscribe.framework/Versions/A/CTranscribe
-# vendor/ may hold it thin already (since 2026-11-12), and lipo refuses -thin on a thin file.
-[ "$(lipo -archs "$bin")" = arm64 ] || { lipo "$bin" -thin arm64 -output $tmp/thin && cp $tmp/thin "$bin"; }
+lipo "$bin" -thin arm64 -output $tmp/thin && cp $tmp/thin "$bin"
 
 # Updates: Sparkle, from its release, checked against a pinned checksum. Only what a non-sandboxed app
 # runs goes into the bundle: no XPC services (they serve sandboxed apps), no headers, Apple silicon only.
 sparkle=2.10.1 sparkle_sha=1a856d2a9edb8e628de88121d7be04cf0e2167f8641650b78fca00b14244cf27
+sparkle_tree=ae96790e4863ed4a925dd814181556c0d896938b30e40e3299a33499bd89e57c
 if [ ! -d vendor/Sparkle.framework ]; then
   mkdir -p vendor $tmp/sparkle
   curl -fsSL -o $tmp/sparkle.tar.xz https://github.com/sparkle-project/Sparkle/releases/download/$sparkle/Sparkle-$sparkle.tar.xz
@@ -37,6 +50,7 @@ if [ ! -d vendor/Sparkle.framework ]; then
   tar -xf $tmp/sparkle.tar.xz -C $tmp/sparkle Sparkle.framework
   ditto $tmp/sparkle/Sparkle.framework vendor/Sparkle.framework
 fi
+same Sparkle $sparkle_tree
 mkdir -p "$app/Contents/Frameworks"
 sp=$app/Contents/Frameworks/Sparkle.framework
 ditto vendor/Sparkle.framework "$sp"
