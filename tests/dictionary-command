@@ -1,10 +1,9 @@
 #!/bin/zsh
 # Tests stt-cli --add-word / --add-pair (cli.swift, Words.add in shared/dictionary.swift) against a running test copy.
 #   TEST=1 ./build, then: tests/dictionary-command "STT Test.app"
-# Only the test copy (its own id, defaults and socket), never STT.app: the test empties the dictionary it writes to. On
-# his Mac it runs in the agents' own session, so the window the test copy opens at launch never reaches his screen:
-#   cs run zsh /Users/Shared/claude/stt-test/dictionary-command "/Users/Shared/claude/stt-test/STT Test.app"
-# (claude can't read his home: copy the app and this script to /Users/Shared/claude/stt-test first.)
+# Only the test copy (its own id, defaults and socket), never STT.app: the test empties the dictionary it writes to. It
+# runs in a test machine (tart, over ssh), so the window the test copy opens at launch never reaches the person's screen;
+# passed there on macOS 26.6.2 and 27.2 (2026-11-18).
 # Not covered here: the Dictionary window open during a command (its edit keeps what was added meanwhile); that was
 # checked by hand through AX (stt.md, «Checked»).
 set -u
