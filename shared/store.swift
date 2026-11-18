@@ -120,16 +120,16 @@ import Security
 
     // What each key may hold, and how much: far above any real dictionary (his has 34 words), far below iCloud's 1 MB.
     static func valid(_ v: Any, _ key: String) -> Bool {
-        // No control or direction-changing characters: these strings end up in pasted text.
-        func text(_ s: String, _ max: Int) -> Bool {
-            s.unicodeScalars.count <= max && !s.unicodeScalars.contains {
-                $0.value < 0x20 || $0.value == 0x7F || (0x202A...0x202E).contains($0.value) || (0x2066...0x2069).contains($0.value)
-            }
-        }
+        // The same check as a word an agent adds (Words.problem, dictionary.swift): at most 200 characters and nothing that
+        // printable() would change, since these strings end up in pasted text. Before security pass 4 (2026-11-17) this was
+        // a list of its own that let C1 controls (U+0080-U+009F) and the marks U+200E, U+200F, U+061C through. An empty
+        // string stays allowed here: harmless (the window and replace() skip it), and refusing it would refuse the whole
+        // list, so one empty row an older version left would stop every later edit from syncing.
+        func text(_ s: String) -> Bool { s.isEmpty || Words.problem(s) == nil }
         switch key {
         case "language": return (v as? String).map { $0.count <= 16 && $0.allSatisfy { $0.isASCII && ($0.isLetter || $0 == "-") } } ?? false
-        case "words": return (v as? [String]).map { $0.count <= 2000 && $0.allSatisfy { text($0, 200) } } ?? false
-        case "replacements": return (v as? [[String]]).map { $0.count <= 5000 && $0.allSatisfy { $0.count == 2 && $0.allSatisfy { text($0, 200) } } } ?? false
+        case "words": return (v as? [String]).map { $0.count <= 2000 && $0.allSatisfy(text) } ?? false
+        case "replacements": return (v as? [[String]]).map { $0.count <= 5000 && $0.allSatisfy { $0.count == 2 && $0.allSatisfy(text) } } ?? false
         case "dictionaryChanged": return (v as? Date).map { $0.timeIntervalSince1970 < latest } ?? false
         case "subtitles": return v is Bool
         case "historyKeep": return (v as? String).map { Keep($0).string == $0 } ?? false
