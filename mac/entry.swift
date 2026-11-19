@@ -960,24 +960,21 @@ func startKeyTap(_ handler: @escaping (Int, Int, Bool, Bool) -> Bool) -> Bool {
     //   page) reads the clipboard well after ⌘V, and taking the old contents back too early pastes them instead.
     // - Only when nothing changed the clipboard meanwhile: a copy made in those 2 s is the person's and stays.
     // - A dictation inside those 2 s borrows again and keeps the contents saved by the first, not the first's text.
-    // - The text is marked transient (nspasteboard.org), so clipboard history apps such as Maccy skip it, and stays on this
-    //   Mac (currentHostOnly): Universal Clipboard would hand it to the person's iPhone for those 2 s.
-    // - A concealed item (nspasteboard.org ConcealedType: a password manager's copied password) is not written back, the
-    //   clipboard is only emptied: the password manager clears it on a timer of its own, and writing it back after that
-    //   would put the secret on the clipboard again with nothing left to clear it (security pass 4, 2026-11-17).
+    // - Standard macOS behaviour both ways (the author's decision, 2026-11-19, STT 0.10): the text is an ordinary copy,
+    //   with no transient or local-only mark, so clipboard history apps and Universal Clipboard see it as any copy; and
+    //   what comes back is exactly what was there, a password manager's concealed item included (its marks come back with
+    //   it). The unreleased hardening of 2026-11-18 (transient, currentHostOnly, a concealed item not written back) was
+    //   dropped before release for this.
     var restore: (items: [NSPasteboardItem], count: Int)?
 
     func borrowClipboard(_ text: String) {
-        let items = pasteboard.pasteboardItems ?? []
-        let concealed = items.contains { $0.types.contains(NSPasteboard.PasteboardType("org.nspasteboard.ConcealedType")) }
-        let saved = restore?.items ?? (concealed ? [] : items.map { item in
+        let saved = restore?.items ?? (pasteboard.pasteboardItems ?? []).map { item in
             let copy = NSPasteboardItem()
             for type in item.types { if let data = item.data(forType: type) { copy.setData(data, forType: type) } }
             return copy
-        })
-        pasteboard.prepareForNewContents(with: .currentHostOnly)
+        }
+        pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
-        pasteboard.setData(Data(), forType: NSPasteboard.PasteboardType("org.nspasteboard.TransientType"))
         let count = pasteboard.changeCount
         restore = (saved, count)
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) { [self] in
