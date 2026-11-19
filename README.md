@@ -47,7 +47,7 @@ Each dictation is kept with its audio in `~/Library/Application Support/STT/Hist
 - Whisper Turbo sometimes stops after a few words (a short «Vielen Dank.» for fifteen seconds of a speech) or loops one phrase. Such a piece is transcribed again without the prompt and then, if still short, at temperature 0.2, and the fuller text is kept. On European Parliament speeches this took German from 22.9 % to 16.1 % of wrong words and Dutch from 22.8 % to 12.4 %; nothing got worse.
 - Filler sounds are removed by a fixed pattern after recognition: э-э, ммм, хм, uh, hmm, äh, euh, yyy and the like, and um in English only (in German and Portuguese it is a word). Words are never changed.
 - The text is pasted into the app in front by a simulated Command-V, which is what Accessibility is for, and stays on the clipboard in case the paste misses. With Paste Text off, the text only goes to the clipboard; with Paste Text and Copy Text both off, only to the history. While a password field is active (macOS’s Secure Input), the text is neither pasted nor put on the clipboard.
-- With Copy Text off, the text is on the clipboard only for the paste. It is marked transient (the nspasteboard.org convention), so clipboard history apps that follow it do not record it, and it stays on this Mac, out of Universal Clipboard. Two seconds after the paste, what was on the clipboard before comes back, unless something new was copied meanwhile. A password from a password manager (marked concealed by the same convention) is not put back: the clipboard is left empty, so the password does not return after the password manager has cleared it.
+- With Copy Text off, the text goes to the clipboard for the paste as an ordinary copy, which clipboard history apps and Universal Clipboard see like any other. Two seconds after the paste, what was on the clipboard before comes back as it was, a password copied from a password manager included, unless something new was copied meanwhile.
 - macOS keeps Option-Command-Space for its own search, so STT catches it with an event tap at the head of the session, which also needs Accessibility.
 
 ### Models
@@ -172,7 +172,7 @@ Files are read with the rights of the program that runs the command, not the app
 
 ### Details
 
-- Version: 0.9.
+- Version: 0.10.
 - Bundle ID: `com.geragaraza.stt`.
 - Download: `STT.dmg`, 4.4 MB.
 - Models: downloaded separately, 740 to 2,185 MB each.
