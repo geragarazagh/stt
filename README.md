@@ -2,9 +2,7 @@
 
 # STT (Speech to Text) for Mac
 
-Free, open source speech to text app for macOS. Press a keyboard shortcut in any app, speak, press it again, and the text lands in the app in front. It also stays on the clipboard.
-
-Apple silicon, macOS 13 or later. Signed with a Developer ID and notarized by Apple.
+STT (Speech to Text) is a free, open source dictation app for macOS. A keyboard shortcut pressed in any app starts a recording, a second press ends it, and the text, recognised on the Mac, is pasted into the app in front. It also transcribes audio and video files.
 
 ![STT in use: Leo Tolstoy's phonograph recordings of 1908-1909 in Russian, French, English and German in STT's history, the letter he dictated on 9 April 1908 open as STT heard it, unedited, the player at 0:33, where «смертной казни» (the death penalty) is heard as «смерти металли», and Settings beside it, dark appearance](docs/scene.webp)
 
@@ -20,15 +18,17 @@ brew install geragarazagh/tap/stt
 
 ## Use
 
-Option-Command-Space starts and stops a recording. Hold it longer than half a second and letting go stops it. Command-Esc cancels. With the window closed, the only sign of a recording is macOS’s orange microphone dot; in the window the recording shows under the list with its time and waveform.
+Option-Command-Space starts and stops a recording. Held longer than half a second, it stops the recording when released. Command-Esc cancels. With the window closed, the only sign of a recording is macOS’s orange microphone dot; in the window the recording shows under the list with its time and waveform.
 
-After the first model, macOS asks for Microphone, then Accessibility.
+Once the first model is downloaded, macOS asks for the Microphone permission, then for Accessibility.
 
-The window is the list of dictations, newest first: each keeps its text, which can be edited in place, and its audio, which can be played. Search goes through the texts; Copy Text, Share (the text or the audio), Transcribe Again with another model and Show in Finder are on the right click; Delete moves recordings to Recently Deleted for 30 days. Several are chosen with Command-A, Shift or Command-click. The record button under the list starts and stops a recording as the shortcut does, and a recording made there is not pasted into the window. Settings (Command-comma) has Check for Updates; Model and Language (Automatic or one language); Recording and Cancel Recording; Open at Login; Pause Media and Mute Sound; Paste Text and Copy Text; Transcribe File with Choose File…; Save Subtitles (.srt); Dictionary with Edit…; History; Quit. Open at Login stays off until it is turned on. Opening the app shows its window. While the window is open, STT is in the Dock and the menu bar like any app; closing the window leaves the shortcut working, with nothing in the Dock or the menu bar.
+The window is the list of dictations, newest first. Each keeps its text, which can be edited in place, and its audio, which can be played. Search goes through the texts; Copy Text, Share (the text or the audio), Transcribe Again with another model and Show in Finder are on the right click; Delete moves recordings to Recently Deleted for 30 days. Several are chosen with Command-A, Shift or Command-click. The record button under the list starts and stops a recording as the shortcut does, and a recording made there is not pasted into the window.
+
+Settings (Command-comma) has Check for Updates; Model and Language (Automatic or one language); Recording and Cancel Recording; Open at Login, off until it is turned on; Pause Media and Mute Sound; Paste Text and Copy Text; Transcribe File with Choose File…; Save Subtitles (.srt); Dictionary with Edit…; History; Quit. Opening the app shows its window. While the window is open, STT is in the Dock and the menu bar like any app; closing the window leaves the shortcut working, with nothing in the Dock or the menu bar.
 
 ## For advanced users and language models
 
-Recognition runs on the Mac with an open model of choice: Whisper, Parakeet or Qwen. The network is used only to download that model and to check for updates; language, dictionary, the subtitles switch and the history setting also go through iCloud to the other Macs of the same account. Each recording is kept with its text on the Mac (History, below). No logs, no account of its own.
+Recognition runs on the Mac with an open model of choice: Whisper, Parakeet or Qwen. The network is used only to download that model and to check for updates; language, dictionary, the subtitles switch and the history setting also go through iCloud to the other Macs of the same account. Each recording is kept with its text on the Mac (History, below). The app keeps no logs and has no account of its own.
 
 Audio and video files: Choose File… in Settings, File › Transcribe File… (Command-O), a drop anywhere on either window, or Open With → STT in Finder. The text is saved beside the file as a `.txt` with the same name (`Interview.m4a` gives `Interview.txt`; an existing file is never overwritten, the new one is `Interview (2).txt`) and copied to the clipboard unless Copy Text is off; it is not pasted. A small window shows the progress with Cancel, then the name of the `.txt`, which shows it in Finder when clicked. Several files go one after another, each to its own `.txt`; a dictation made meanwhile waits for the file. With Save Subtitles (.srt) on, an `.srt` with timecodes goes beside the `.txt` under the same name (`Interview.srt`), one subtitle per stretch of speech the model marks. Files opened by another program than Finder or the Dock (`open -a STT` in Terminal, a script) are asked about first, since their text goes to the clipboard.
 
@@ -46,7 +46,8 @@ Each dictation is kept with its audio in `~/Library/Application Support/STT/Hist
 - On silence and at the end of speech Whisper writes lines it learned from film subtitles, such as «Субтитры сделал DimaTorzok» or «Продолжение следует...». Such credit lines are removed when they close a piece of speech.
 - Whisper Turbo sometimes stops after a few words (a short «Vielen Dank.» for fifteen seconds of a speech) or loops one phrase. Such a piece is transcribed again without the prompt and then, if still short, at temperature 0.2, and the fuller text is kept. On European Parliament speeches this took German from 22.9 % to 16.1 % of wrong words and Dutch from 22.8 % to 12.4 %; nothing got worse.
 - Filler sounds are removed by a fixed pattern after recognition: э-э, ммм, хм, uh, hmm, äh, euh, yyy and the like, and um in English only (in German and Portuguese it is a word). Words are never changed.
-- The text is pasted into the app in front by a simulated Command-V, which is what Accessibility is for, and stays on the clipboard in case the paste misses. With Copy Text off, whatever was on the clipboard before comes back two seconds after the paste; with Paste Text off, the text only goes to the clipboard; with both off, only to the history. While a password field is active (macOS’s Secure Input), the text is neither pasted nor put on the clipboard.
+- The text is pasted into the app in front by a simulated Command-V, which is what Accessibility is for, and stays on the clipboard in case the paste misses. With Paste Text off, the text only goes to the clipboard; with Paste Text and Copy Text both off, only to the history. While a password field is active (macOS’s Secure Input), the text is neither pasted nor put on the clipboard.
+- With Copy Text off, the text is on the clipboard only for the paste. It is marked transient (the nspasteboard.org convention), so clipboard history apps that follow it do not record it, and it stays on this Mac, out of Universal Clipboard. Two seconds after the paste, what was on the clipboard before comes back, unless something new was copied meanwhile. A password from a password manager (marked concealed by the same convention) is not put back: the clipboard is left empty, so the password does not return after the password manager has cleared it.
 - macOS keeps Option-Command-Space for its own search, so STT catches it with an event tap at the head of the session, which also needs Accessibility.
 
 ### Models
@@ -167,7 +168,7 @@ stt-cli --add-pair "super base" Supabase  # a replacement: heard, written
 
 Files are read with the rights of the program that runs the command, not the app’s. `--toggle` works the running app as its key does, and only for a program that has the Microphone permission itself (Terminal asks once). Started as an app or a launchd job rather than from a terminal or a script, the command refuses to run, since it would then act with STT’s own permissions.
 
-`--add-word` and `--add-pair` are for AI agents and scripts that keep the dictionary for a person: an agent that sees the same word misheard again adds it, and nobody has to open Dictionary. They go through the running app as an edit in Dictionary does, so the other Macs get it too, and each is checked first: 200 characters at most, no control or text-direction characters. A word or replacement already there is left as it is; the same word in another spelling, or the same heard form with another written one, is changed. The answer says which (Added, Already in the dictionary, Changed), and an error exits with 1.
+`--add-word` and `--add-pair` are for AI agents and scripts that keep the dictionary for a person: an agent that sees the same word misheard again adds it, and nobody has to open Dictionary. They go through the running app as an edit in Dictionary does, so the other Macs get it too, and each is checked first: 200 characters at most, no control or text-direction characters. A word or replacement already there is left as it is; the same word in another spelling, or the same heard form with another written one, is changed. The answer says which (Added, Already in the dictionary, Changed), with any control character in it printed as a space, and an error exits with 1.
 
 ### Details
 
@@ -178,7 +179,7 @@ Files are read with the rights of the program that runs the command, not the app
 - Requires: Apple silicon, macOS 13 or later.
 - Permissions: Microphone, Accessibility. Network: to download a model and to check for updates; iCloud for four settings.
 - Signed with a Developer ID and notarized by Apple.
-- Code: Swift with AppKit, SwiftUI and Core Data, about 3,600 lines, the transcribe.cpp framework, and Sparkle for updates.
+- Code: Swift with AppKit, SwiftUI and Core Data, about 4,500 lines, the transcribe.cpp framework, and Sparkle for updates.
 - License: MIT.
 
 ### Build
