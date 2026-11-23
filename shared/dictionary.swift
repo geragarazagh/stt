@@ -147,6 +147,30 @@ let presetPairs: [(heard: String, written: String)] = [
         return (true, "Added: \(heard) → \(written)")
     }
 
+    static func remove(word raw: String) -> (ok: Bool, answer: String) {
+        let w = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let p = problem(w) { return (false, p) }
+        var list = words
+        guard let i = list.firstIndex(where: { $0.lowercased() == w.lowercased() }) else {
+            return (false, "Not in the dictionary: \(w)")
+        }
+        let old = list.remove(at: i)
+        words = list
+        return (true, "Removed: \(old)")
+    }
+
+    static func remove(heard rawHeard: String) -> (ok: Bool, answer: String) {
+        let heard = rawHeard.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let p = problem(heard) { return (false, "Heard: " + p) }
+        var rows = replacements
+        guard let i = rows.firstIndex(where: { $0.heard.lowercased() == heard.lowercased() }) else {
+            return (false, "Not in the dictionary: \(heard)")
+        }
+        let old = rows.remove(at: i)
+        replacements = rows
+        return (true, "Removed: \(old.heard) → \(old.written)")
+    }
+
     // Trimmed, no empty ones, no repeats (the first spelling wins).
     static func clean(_ list: [String]) -> [String] {
         var seen = Set<String>()

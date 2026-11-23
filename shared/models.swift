@@ -41,8 +41,18 @@ let models: [ASRModel] = [
 
 // ~/Library/Application Support/STT/models: plain files, easy to find and to delete by hand. It appears only with the first
 // download and goes with the last delete. The name comes from the bundle so a test build keeps to its own folder.
-let appFolder = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-    .appendingPathComponent(Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String ?? "STT", isDirectory: true)
+// On the Mac the bundle is found from the executable's real path (STT.app/Contents/MacOS/STT, three levels down), so
+// stt-cli run through a Homebrew symlink still reads the app's own folder; an iOS bundle is flat, so there it stays .main.
+let appFolder: URL = {
+    #if os(macOS)
+    let real = URL(fileURLWithPath: CommandLine.arguments[0]).resolvingSymlinksInPath()
+    let bundle = Bundle(url: real.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()) ?? .main
+    #else
+    let bundle = Bundle.main
+    #endif
+    let name = bundle.object(forInfoDictionaryKey: "CFBundleName") as? String ?? "STT"
+    return FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent(name, isDirectory: true)
+}()
 let modelsFolder = appFolder.appendingPathComponent("models", isDirectory: true)
 
 // Any file AVFoundation can open, video included: the first audio track as 16 kHz mono.

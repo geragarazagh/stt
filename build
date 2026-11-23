@@ -1,10 +1,16 @@
 #!/bin/zsh
-# Builds STT.app in this folder from shared/ (what the Mac and iPhone apps share) and mac/. Needs Xcode (the Shortcuts
-# metadata and the icon, below).
+# Builds STT.app in this folder from shared/ (what the Mac and iPhone apps share) and mac/.
+# Works with Xcode Command Line Tools alone for ad-hoc local builds; full Xcode in /Applications is used for
+# Shortcuts metadata and Icon Composer (required for Developer ID signed releases).
 set -e
 cd "${0:A:h}"
 # It changes per release, not per build.
 version=0.10 min=13.0 id=com.geragaraza.stt app=STT.app engine=0.4.1 name=STT
+xc=${XCODE_CONTENTS:-/Applications/Xcode.app/Contents}
+has_xcode=0; [ -d "$xc/Developer" ] && [ -x "$xc/Applications/Icon Composer.app/Contents/Executables/ictool" ] && has_xcode=1
+if [ -n "${SIGN_ID:-}" ] && [ "$SIGN_ID" != - ] && [ $has_xcode -eq 0 ]; then
+  echo "Developer ID builds require full Xcode at $xc (for Assets.car and App Intents metadata)"; exit 1
+fi
 # A test copy beside the real one (TEST=1): its own id, name and folder, so it shares no settings, grants or history.
 [ -n "${TEST:-}" ] && { id=com.geragaraza.stt.test app="STT Test.app" name="STT Test"; }
 tmp=$(mktemp -d); trap 'rm -rf $tmp' EXIT
@@ -69,17 +75,21 @@ swiftc -O -wmo -target arm64-apple-macos$min -parse-as-library -module-name STT 
 [ -x "$app/Contents/MacOS/STT" ]
 
 # Shortcuts: Metadata.appintents in Resources, as Xcode writes it (needs full Xcode). Without it the actions exist in the
-# binary and Shortcuts never lists them.
-xd=/Applications/Xcode.app/Contents/Developer
-for f in $sources; do echo "$PWD/$f"; done > $tmp/sources.txt
-echo $tmp/STT.swiftconstvalues > $tmp/constvalues.txt
-DEVELOPER_DIR=$xd xcrun appintentsmetadataprocessor --output "$app/Contents/Resources" --toolchain-dir $xd/Toolchains/XcodeDefault.xctoolchain \
-  --module-name STT --sdk-root "$(DEVELOPER_DIR=$xd xcrun --sdk macosx --show-sdk-path)" \
-  --xcode-version "$(DEVELOPER_DIR=$xd xcodebuild -version | awk '/Build version/{print $3}')" --platform-family macOS \
-  --deployment-target $min --bundle-identifier $id --target-triple arm64-apple-macos$min --binary-file "$app/Contents/MacOS/STT" \
-  --source-file-list $tmp/sources.txt --swift-const-vals-list $tmp/constvalues.txt --force --compile-time-extraction \
-  --deployment-aware-processing --no-app-shortcuts-localization 2>&1 | grep -iE "error|warning" || true
-[ -f "$app/Contents/Resources/Metadata.appintents/extract.actionsdata" ]
+# binary and Shortcuts never lists them; ad-hoc CLT-only builds skip this step with a note.
+if [ $has_xcode -eq 1 ]; then
+  xd=$xc/Developer
+  for f in $sources; do echo "$PWD/$f"; done > $tmp/sources.txt
+  echo $tmp/STT.swiftconstvalues > $tmp/constvalues.txt
+  DEVELOPER_DIR=$xd xcrun appintentsmetadataprocessor --output "$app/Contents/Resources" --toolchain-dir $xd/Toolchains/XcodeDefault.xctoolchain \
+    --module-name STT --sdk-root "$(DEVELOPER_DIR=$xd xcrun --sdk macosx --show-sdk-path)" \
+    --xcode-version "$(DEVELOPER_DIR=$xd xcodebuild -version | awk '/Build version/{print $3}')" --platform-family macOS \
+    --deployment-target $min --bundle-identifier $id --target-triple arm64-apple-macos$min --binary-file "$app/Contents/MacOS/STT" \
+    --source-file-list $tmp/sources.txt --swift-const-vals-list $tmp/constvalues.txt --force --compile-time-extraction \
+    --deployment-aware-processing --no-app-shortcuts-localization 2>&1 | grep -iE "error|warning" || true
+  [ -f "$app/Contents/Resources/Metadata.appintents/extract.actionsdata" ]
+else
+  echo "Note: Xcode not found at $xc; skipping Shortcuts metadata and using iconutil fallback for AppIcon.icns."
+fi
 
 # App icon, Apple's way since 2026-11-09: an Icon Composer document (the picture from icon.swift, the plate is the
 # system's own fill) compiled by Xcode's actool into Assets.car, which macOS 26+ shows light, dark, clear or tinted with
@@ -89,11 +99,14 @@ DEVELOPER_DIR=$xd xcrun appintentsmetadataprocessor --output "$app/Contents/Reso
 # Icon Composer's defaults the picture turned to glass (the white wave and the OCR digits vanished in the dark rendition).
 # The light picture sits in the specializations list as the entry without an appearance: given as plain image-name,
 # Icon Composer ignored the dark entry and darkened the light picture itself (measured with ictool, 2026-11-09).
-xc=/Applications/Xcode.app/Contents
+# On Macs with Command Line Tools only (no Xcode.app), AppIcon.icns is packed from icon.swift's light picture via
+# sips + iconutil: no dark or tinted rendition, and docs/ (the README's and the site's pictures) is left untouched.
 swiftc -O -o $tmp/icon mac/icon.swift
 mkdir -p $tmp/AppIcon.icon/Assets docs
-$tmp/icon $tmp/AppIcon.icon/Assets docs/wave.svg   # and the wave for the site
-cat > $tmp/AppIcon.icon/icon.json <<'JSON'
+$tmp/icon $tmp/AppIcon.icon/Assets $tmp/wave.svg   # and the wave for the site (docs/wave.svg, Xcode builds only)
+if [ $has_xcode -eq 1 ]; then
+  cp $tmp/wave.svg docs/wave.svg
+  cat > $tmp/AppIcon.icon/icon.json <<'JSON'
 {
   "fill" : "system-light",
   "fill-specializations" : [ { "appearance" : "dark", "value" : "system-dark" } ],
@@ -103,14 +116,23 @@ cat > $tmp/AppIcon.icon/icon.json <<'JSON'
   "supported-platforms" : { "squares" : [ "macOS" ] }
 }
 JSON
-DEVELOPER_DIR=$xc/Developer xcrun actool $tmp/AppIcon.icon --compile "$PWD/$app/Contents/Resources" --platform macosx \
-  --minimum-deployment-target $min --app-icon AppIcon --output-partial-info-plist $tmp/icon.plist --target-device mac >/dev/null
-for r in Default Dark; do
-  "$xc/Applications/Icon Composer.app/Contents/Executables/ictool" $tmp/AppIcon.icon --export-image --output-file $tmp/$r.png \
-    --platform macOS --rendition $r --width 206 --height 206 --scale 1 >/dev/null
-  sips -p 256 256 $tmp/$r.png --out docs/icon${${r:#Default}:+-dark}.png >/dev/null
-done
+  DEVELOPER_DIR=$xc/Developer xcrun actool $tmp/AppIcon.icon --compile "$PWD/$app/Contents/Resources" --platform macosx \
+    --minimum-deployment-target $min --app-icon AppIcon --output-partial-info-plist $tmp/icon.plist --target-device mac >/dev/null
+  for r in Default Dark; do
+    "$xc/Applications/Icon Composer.app/Contents/Executables/ictool" $tmp/AppIcon.icon --export-image --output-file $tmp/$r.png \
+      --platform macOS --rendition $r --width 206 --height 206 --scale 1 >/dev/null
+    sips -p 256 256 $tmp/$r.png --out docs/icon${${r:#Default}:+-dark}.png >/dev/null
+  done
+else
+  mkdir -p $tmp/AppIcon.iconset
+  for sz in 16 32 128 256 512; do
+    sips -z $sz $sz $tmp/AppIcon.icon/Assets/light.png --out $tmp/AppIcon.iconset/icon_${sz}x${sz}.png >/dev/null
+    sips -z $((sz*2)) $((sz*2)) $tmp/AppIcon.icon/Assets/light.png --out $tmp/AppIcon.iconset/icon_${sz}x${sz}@2x.png >/dev/null
+  done
+  iconutil -c icns $tmp/AppIcon.iconset -o "$app/Contents/Resources/AppIcon.icns"
+fi
 cp vendor/silero-vad-v6.2-F32.gguf LICENSE THIRD-PARTY-LICENSES.md "$app/Contents/Resources/"
+[ -f skills/stt/SKILL.md ] && cp skills/stt/SKILL.md "$app/Contents/Resources/SKILL.md"
 clang -O2 -target arm64-apple-macos$min -dynamiclib -o "$app/Contents/Resources/playing.dylib" mac/playing.c
 
 # Document types: audio and video, so Finder lists STT under Open With. Alternate: a second opener, never the default

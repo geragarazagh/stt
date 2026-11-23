@@ -1,11 +1,18 @@
 // The command line (0.5): the app's own binary, run under the name stt-cli (Homebrew links it so; by hand:
 // ln -s /Applications/STT.app/Contents/MacOS/STT /usr/local/bin/stt-cli), or as STT with these arguments:
 //
-//   stt-cli FILE...         each file's text to standard output, with the model, language and dictionary set in the app
-//   stt-cli --srt FILE...   the same as subtitles (SubRip)
-//   stt-cli --toggle        starts or stops a recording in the running app, as its key does
-//   stt-cli --add-word WORD             adds a word to the dictionary of the running app (dictionary.swift, Words.add)
-//   stt-cli --add-pair HEARD WRITTEN    adds a replacement: what a model writes, and what to write instead
+//   stt-cli FILE...                              each file's text to standard output, with the model, language and dictionary set in the app
+//   stt-cli --srt FILE...                        the same as subtitles (SubRip)
+//   stt-cli --toggle                             starts or stops a recording in the running app, as its key does
+//   stt-cli --add-word WORD                      adds a word to the dictionary of the running app (dictionary.swift, Words.add)
+//   stt-cli --remove-word WORD                   removes a word from the dictionary of the running app
+//   stt-cli --add-pair HEARD WRITTEN             adds a replacement: what a model writes, and what to write instead
+//   stt-cli --remove-pair HEARD                  removes a replacement from the dictionary of the running app
+//   stt-cli --list-words [--json]                prints every word in the dictionary
+//   stt-cli --list-pairs [--json]                prints every replacement pair (heard<Tab>written)
+//   stt-cli --history [N] [--search Q] [--json]  prints recent dictations from History.sqlite
+//   stt-cli --status [--json]                    prints active model, language, running state, dictionary and history counts
+//   stt-cli --version                            prints app name and version
 //
 // Why stt-cli and not stt: a plain `stt` is taken on many Macs by speech tools of its own (the author's own Mac among them),
 // and Homebrew has an unrelated «sttr».
@@ -33,8 +40,26 @@ import Security
 
 let cliName = "stt-cli"
 
-// The app's socket: in the user's own temporary folder (0700, per user), named by the bundle so a test build has its own.
-var controlPath: String { NSTemporaryDirectory() + (Bundle.main.bundleIdentifier ?? "stt") + ".sock" }
+// Resolve the enclosing .app bundle even when invoked through a symlink (/opt/homebrew/bin/stt-cli -> STT.app/Contents/MacOS/STT).
+// Without this, Bundle.main points to /opt/homebrew/bin, bundleIdentifier is nil, and UserDefaults.standard reads the wrong domain.
+let cliAppBundle: Bundle = {
+    let real = URL(fileURLWithPath: CommandLine.arguments[0]).resolvingSymlinksInPath()
+    let appURL = real.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+    return Bundle(url: appURL) ?? .main
+}()
+
+private var cliDefaults: UserDefaults {
+    cliAppBundle.bundleIdentifier.flatMap(UserDefaults.init(suiteName:)) ?? .standard
+}
+
+// The app's socket: in the user's own Darwin temp folder (0700, per user, via confstr so a shell or agent harness that
+// overrides TMPDIR still finds the running GUI app's socket), named by the bundle so a test build has its own.
+var controlPath: String {
+    var buf = [CChar](repeating: 0, count: Int(PATH_MAX))
+    let dir = confstr(_CS_DARWIN_USER_TEMP_DIR, &buf, buf.count) > 0 ? String(cString: buf) : NSTemporaryDirectory()
+    let base = dir.hasSuffix("/") ? dir : dir + "/"
+    return base + (cliAppBundle.bundleIdentifier ?? "com.geragaraza.stt") + ".sock"
+}
 
 private func unixAddress(_ path: String) -> sockaddr_un {
     var a = sockaddr_un()
@@ -62,20 +87,37 @@ private func fail(_ s: String) -> Never { FileHandle.standardError.write((s + "\
 // Called first in main: true when this run is the command line. A run under another name with no arguments prints the usage
 // instead of starting a second copy of the app.
 @MainActor func runCommandLine(_ args: [String]) -> Bool {
-    let named = URL(fileURLWithPath: args[0]).lastPathComponent != (Bundle.main.object(forInfoDictionaryKey: "CFBundleExecutable") as? String ?? "STT")
+    let named = URL(fileURLWithPath: args[0]).lastPathComponent != (cliAppBundle.object(forInfoDictionaryKey: "CFBundleExecutable") as? String ?? "STT")
     let rest = Array(args.dropFirst())
     let usage = """
-    Usage: \(cliName) [--srt] FILE...              prints the text of each audio or video file
-           \(cliName) --toggle                     starts or stops a recording in STT
-           \(cliName) --add-word WORD              adds a name or term to STT's dictionary, spelled as it should be written
-           \(cliName) --add-pair HEARD WRITTEN     adds a replacement: what the model writes, and what to write instead
+    Usage: \(cliName) [--srt] FILE...                              prints the text of each audio or video file
+           \(cliName) --toggle                                     starts or stops a recording in STT
+           \(cliName) --add-word WORD                              adds a name or term to STT's dictionary, spelled as it should be written
+           \(cliName) --remove-word WORD                           removes a word from STT's dictionary
+           \(cliName) --add-pair HEARD WRITTEN                     adds a replacement: what the model writes, and what to write instead
+           \(cliName) --remove-pair HEARD                          removes a replacement from STT's dictionary
+           \(cliName) --list-words [--json]                        prints every word in the dictionary
+           \(cliName) --list-pairs [--json]                        prints every replacement pair (heard<Tab>written)
+           \(cliName) --history [N] [--search QUERY] [--json]      prints recent dictations (default 20)
+           \(cliName) --status [--json]                            prints active model, language, running state and counts
+           \(cliName) --version                                    prints app version
     """
     // Which mode, if any; the app itself (no arguments, or its own --login, --background, --pasteboard) goes on.
     var run: (() -> Never)?
     switch rest.first {
     case "--toggle": run = rest.count == 1 ? { toggle() } : { fail(usage) }
     case "--add-word": run = rest.count == 2 ? { ask(["add-word", rest[1]]) } : { fail(usage) }
+    case "--remove-word": run = rest.count == 2 ? { ask(["remove-word", rest[1]]) } : { fail(usage) }
     case "--add-pair": run = rest.count == 3 ? { ask(["add-pair", rest[1], rest[2]]) } : { fail(usage) }
+    case "--remove-pair": run = rest.count == 2 ? { ask(["remove-pair", rest[1]]) } : { fail(usage) }
+    case "--list-words": run = { listWords(Array(rest.dropFirst()), usage: usage) }
+    case "--list-pairs": run = { listPairs(Array(rest.dropFirst()), usage: usage) }
+    case "--history": run = { listHistory(Array(rest.dropFirst()), usage: usage) }
+    case "--status": run = { printStatus(Array(rest.dropFirst()), usage: usage) }
+    case "--version", "-V":
+        let v = cliAppBundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
+        let n = cliAppBundle.object(forInfoDictionaryKey: "CFBundleName") as? String ?? "STT"
+        print("\(n) \(v)"); exit(0)
     case "--srt": run = { transcribeFromCommandLine(rest) }
     case "--help", "-h": print(usage); exit(0)
     case nil: if named { print(usage); exit(0) }
@@ -94,20 +136,144 @@ private func fail(_ s: String) -> Never { FileHandle.standardError.write((s + "\
     return false
 }
 
+private func printJSON(_ obj: Any) -> Never {
+    guard let data = try? JSONSerialization.data(withJSONObject: obj, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]),
+          let text = String(data: data, encoding: .utf8) else { fail("Could not encode JSON.") }
+    print(text)
+    exit(0)
+}
+
+@MainActor private func listWords(_ args: [String], usage: String) -> Never {
+    let json = args == ["--json"]
+    guard args.isEmpty || json else { fail(usage) }
+    let raw = cliDefaults.stringArray(forKey: Words.wordsKey) ?? presetWords
+    let list = raw.map(printable)
+    if json { printJSON(list) }
+    for w in list { print(w) }
+    exit(0)
+}
+
+@MainActor private func listPairs(_ args: [String], usage: String) -> Never {
+    let json = args == ["--json"]
+    guard args.isEmpty || json else { fail(usage) }
+    let pairs: [(heard: String, written: String)]
+    if let stored = cliDefaults.array(forKey: Words.replacementsKey) as? [[String]] {
+        pairs = stored.compactMap { $0.count == 2 ? ($0[0], $0[1]) : nil }
+    } else {
+        pairs = presetPairs
+    }
+    let rows = pairs.map { (heard: printable($0.heard), written: printable($0.written)) }
+    if json { printJSON(rows.map { [$0.heard, $0.written] }) }
+    for r in rows { print("\(r.heard)\t\(r.written)") }
+    exit(0)
+}
+
+@MainActor private func listHistory(_ args: [String], usage: String) -> Never {
+    var limit = 20, query: String? = nil, json = false
+    var i = 0
+    while i < args.count {
+        switch args[i] {
+        case "--json": json = true; i += 1
+        case "--search":
+            guard i + 1 < args.count else { fail(usage) }
+            query = args[i + 1]; i += 2
+        default:
+            guard let n = Int(args[i]), n > 0, i == 0 else { fail(usage) }
+            limit = n; i += 1
+        }
+    }
+    var rows = History.shared.all()
+    if let q = query, !q.isEmpty {
+        rows = rows.filter { ($0.text ?? "").localizedCaseInsensitiveContains(q) }
+    }
+    let slice = Array(rows.prefix(limit))
+    let fmt = ISO8601DateFormatter()
+    if json {
+        let out: [[String: Any]] = slice.map { r in
+            var d: [String: Any] = [
+                "id": r.id?.uuidString ?? "",
+                "created": r.created.map { fmt.string(from: $0) } ?? "",
+                "duration": NSDecimalNumber(value: Int((r.duration * 10).rounded())).dividing(by: NSDecimalNumber(value: 10)),
+                "model": printable(r.model ?? ""),
+                "text": printable(r.text ?? ""),
+            ]
+            if let lang = r.language { d["language"] = printable(lang) }
+            if let audio = r.audioURL?.path { d["audio"] = audio }
+            return d
+        }
+        printJSON(out)
+    }
+    for r in slice {
+        let ts = r.created.map { fmt.string(from: $0) } ?? ""
+        let dur = String(format: "%.1fs", r.duration)
+        let text = printable(r.text ?? "").replacingOccurrences(of: "\n", with: " ")
+        print("\(ts)\t\(dur)\t\(text)")
+    }
+    exit(0)
+}
+
+private func isRunning() -> Bool {
+    guard let id = cliAppBundle.bundleIdentifier else { return false }
+    return NSRunningApplication.runningApplications(withBundleIdentifier: id).contains { $0.processIdentifier != getpid() }
+}
+
+@MainActor private func printStatus(_ args: [String], usage: String) -> Never {
+    let json = args == ["--json"]
+    guard args.isEmpty || json else { fail(usage) }
+    let version = cliAppBundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
+    let activeId = cliDefaults.string(forKey: "model")
+    let active = models.first { $0.id == activeId && $0.isHere }?.id
+    let downloaded = models.filter(\.isHere).map(\.id)
+    let language = cliDefaults.string(forKey: "language") ?? "auto"
+    let keep = Keep(cliDefaults.string(forKey: Keep.key)).string
+    let running = isRunning()
+    let wordCount = (cliDefaults.stringArray(forKey: Words.wordsKey) ?? presetWords).count
+    let pairCount = (cliDefaults.array(forKey: Words.replacementsKey) as? [[String]])?.filter { $0.count == 2 }.count ?? presetPairs.count
+    let historyCount = History.shared.all().count
+    if json {
+        printJSON([
+            "version": version,
+            "running": running,
+            "model": active as Any,
+            "downloadedModels": downloaded,
+            "language": language,
+            "historyKeep": keep,
+            "words": wordCount,
+            "pairs": pairCount,
+            "historyCount": historyCount,
+            "modelsDir": modelsFolder.path,
+            "historyDir": historyFolder.path,
+        ])
+    }
+    print("version: \(version)")
+    print("running: \(running ? "yes" : "no")")
+    print("model: \(active ?? "none")")
+    print("downloaded: \(downloaded.isEmpty ? "none" : downloaded.joined(separator: ", "))")
+    print("language: \(language)")
+    print("historyKeep: \(keep)")
+    print("dictionary: \(wordCount) words, \(pairCount) pairs")
+    print("history: \(historyCount) recordings")
+    exit(0)
+}
+
 @MainActor private func transcribeFromCommandLine(_ rest: [String]) -> Never {
     let subtitles = rest.first == "--srt"
     let paths = subtitles ? Array(rest.dropFirst()) : rest
     guard !paths.isEmpty else { fail("No file given.") }
-    guard let m = models.first(where: { $0.id == UserDefaults.standard.string(forKey: "model") && $0.isHere }) ?? models.first(where: { $0.isHere })
+    guard let m = models.first(where: { $0.id == cliDefaults.string(forKey: "model") && $0.isHere }) ?? models.first(where: { $0.isHere })
     else { fail("No model: choose one in the STT window first.") }
     let e = Engine()
-    do { try e.load(path: m.path.path) } catch { fail("\(m.title): \(error)") }
+    do { try e.load(path: m.path.path, vadPath: cliAppBundle.path(forResource: "silero-vad-v6.2-F32", ofType: "gguf")) } catch { fail("\(m.title): \(error)") }
     // The language and the dictionary as the app has them.
-    let all = Words.words, preset = Set(presetWords.map { $0.lowercased() })
+    let all = cliDefaults.stringArray(forKey: Words.wordsKey) ?? presetWords, preset = Set(presetWords.map { $0.lowercased() })
     e.ownWords = all.filter { !preset.contains($0.lowercased()) }
     e.builtIn = all.filter { preset.contains($0.lowercased()) }
-    e.pairs = Words.replacements
-    if let code = UserDefaults.standard.string(forKey: "language"), m.languages.contains(code) { e.forced = code }
+    if let stored = cliDefaults.array(forKey: Words.replacementsKey) as? [[String]] {
+        e.pairs = stored.compactMap { $0.count == 2 ? ($0[0], $0[1]) : nil }
+    } else {
+        e.pairs = presetPairs
+    }
+    if let code = cliDefaults.string(forKey: "language"), m.languages.contains(code) { e.forced = code }
     var failed = false
     for (i, path) in paths.enumerated() {
         let url = URL(fileURLWithPath: path)
@@ -231,6 +397,9 @@ func readSocket(_ fd: Int32, limit: Int, seconds: Double, toNewline: Bool) -> Da
         let c = Darwin.accept(fd, nil, nil)
         guard c >= 0 else { return }
         defer { close(c) }
+        // Prevent SIGPIPE from killing the running app if a peer disconnects before reading the reply.
+        var noSigPipe: Int32 = 1
+        setsockopt(c, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, socklen_t(MemoryLayout<Int32>.size))
         // The peer is checked before anything is read, so a stranger can't hold the main thread (and the key tap on it).
         guard trusted(c) else { _ = "Refused: not \(cliName).\n".withCString { write(c, $0, strlen($0)) }; return }
         // One line, at most 4 KB, read within a second in all, so a slow sender holds nothing for long.

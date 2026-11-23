@@ -60,6 +60,19 @@ pairs=$(defaults export $id - | plutil -extract replacements json -o - -)
 [[ $pairs == *'["ватага","Vataga Terminal"],["github","GitHub"]]' ]] && echo "ok    pairs stored" || { echo "FAIL  pairs: ${pairs[-120,-1]}"; fails=$((fails + 1)); }
 [ $(echo $pairs | grep -o '\["' | wc -l) -eq 106 ] && echo "ok    106 pairs" || { echo "FAIL  pair count"; fails=$((fails + 1)); }
 
+# List, remove, status, version, history (added 2026-11-23).
+"$cli" --list-words | grep -qx "VATAGA" && echo "ok    --list-words" || { echo "FAIL  --list-words"; fails=$((fails + 1)); }
+"$cli" --list-pairs | grep -qx $'ватага\tVataga Terminal' && echo "ok    --list-pairs" || { echo "FAIL  --list-pairs"; fails=$((fails + 1)); }
+"$cli" --list-words --json | python3 -c 'import json,sys; d=json.load(sys.stdin); assert "VATAGA" in d' && echo "ok    --list-words --json" || { echo "FAIL  --list-words --json"; fails=$((fails + 1)); }
+"$cli" --list-pairs --json | python3 -c 'import json,sys; d=json.load(sys.stdin); assert ["ватага","Vataga Terminal"] in d' && echo "ok    --list-pairs --json" || { echo "FAIL  --list-pairs --json"; fails=$((fails + 1)); }
+check 0 "Removed: VATAGA" --remove-word vataga
+check 1 "Not in the dictionary: VATAGA" --remove-word VATAGA
+check 0 "Removed: ватага → Vataga Terminal" --remove-pair Ватага
+check 1 "Not in the dictionary: ватага" --remove-pair ватага
+"$cli" --version | grep -q "^STT Test " && echo "ok    --version" || { echo "FAIL  --version"; fails=$((fails + 1)); }
+"$cli" --status --json | python3 -c 'import json,sys; d=json.load(sys.stdin); assert d["running"] is True and d["words"] == 25 and d["pairs"] == 105' && echo "ok    --status --json" || { echo "FAIL  --status --json"; fails=$((fails + 1)); }
+"$cli" --history --json | python3 -c 'import json,sys; assert json.load(sys.stdin) == []' && echo "ok    --history --json" || { echo "FAIL  --history --json"; fails=$((fails + 1)); }
+
 pkill -f "$cli"
 echo "$fails failed"
 exit $((fails > 0))

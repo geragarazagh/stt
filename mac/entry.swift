@@ -211,9 +211,10 @@ func startKeyTap(_ handler: @escaping (Int, Int, Bool, Bool) -> Bool) -> Bool {
         control.edit = { [weak self] c in
             let r: (ok: Bool, answer: String)
             switch (c.first, c.count) {
-            case ("add-word", 2):
-                r = Words.add(word: c[1])
+            case ("add-word", 2): r = Words.add(word: c[1])
             case ("add-pair", 3): r = Words.add(heard: c[1], written: c[2])
+            case ("remove-word", 2): r = Words.remove(word: c[1])
+            case ("remove-pair", 2): r = Words.remove(heard: c[1])
             default: return "Unknown command."
             }
             guard r.ok else { return r.answer }
