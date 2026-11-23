@@ -43,13 +43,19 @@ let cliName = "stt-cli"
 // Resolve the enclosing .app bundle even when invoked through a symlink (/opt/homebrew/bin/stt-cli -> STT.app/Contents/MacOS/STT).
 // Without this, Bundle.main points to /opt/homebrew/bin, bundleIdentifier is nil, and UserDefaults.standard reads the wrong domain.
 let cliAppBundle: Bundle = {
-    let real = URL(fileURLWithPath: CommandLine.arguments[0]).resolvingSymlinksInPath()
+    // executableURL, not argv[0]: run by name from PATH (the Homebrew symlink) argv[0] is the bare name, and the bundle
+    // three levels above it is the current folder's, not the app's (measured 2026-11-23: version 0, settings unread).
+    let real = (Bundle.main.executableURL ?? URL(fileURLWithPath: CommandLine.arguments[0])).resolvingSymlinksInPath()
     let appURL = real.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
     return Bundle(url: appURL) ?? .main
 }()
 
+// Run from inside the bundle the process is the app itself: a suite named after its own id is refused (nil, and a
+// console line «will not work» on every run), and .standard is that domain already. Through a symlink Bundle.main has
+// no id, so the suite is what reaches the app's settings.
 private var cliDefaults: UserDefaults {
-    cliAppBundle.bundleIdentifier.flatMap(UserDefaults.init(suiteName:)) ?? .standard
+    guard let id = cliAppBundle.bundleIdentifier, id != Bundle.main.bundleIdentifier else { return .standard }
+    return UserDefaults(suiteName: id) ?? .standard
 }
 
 // The app's socket: in the user's own Darwin temp folder (0700, per user, via confstr so a shell or agent harness that

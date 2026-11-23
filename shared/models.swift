@@ -45,7 +45,9 @@ let models: [ASRModel] = [
 // stt-cli run through a Homebrew symlink still reads the app's own folder; an iOS bundle is flat, so there it stays .main.
 let appFolder: URL = {
     #if os(macOS)
-    let real = URL(fileURLWithPath: CommandLine.arguments[0]).resolvingSymlinksInPath()
+    // executableURL, not argv[0]: run by name from PATH (the Homebrew symlink) argv[0] is the bare name, and the bundle
+    // three levels above it is the current folder's, not the app's (measured 2026-11-23: version 0, settings unread).
+    let real = (Bundle.main.executableURL ?? URL(fileURLWithPath: CommandLine.arguments[0])).resolvingSymlinksInPath()
     let bundle = Bundle(url: real.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()) ?? .main
     #else
     let bundle = Bundle.main
