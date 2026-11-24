@@ -11,11 +11,11 @@ Drives the macOS STT app (`stt-cli`) for offline transcription, dictation dictio
 
 ## Locate the CLI
 
-Check in order; use the first that exits 0:
+Check in order; use the first that exits 0. Use `--help`, not `--version`: STT 0.5-0.10 know only `--help`, and before 0.9 an unknown flag opens a second copy of the app.
 
 ```sh
-stt-cli --version
-/Applications/STT.app/Contents/MacOS/STT --version
+stt-cli --help
+/Applications/STT.app/Contents/MacOS/STT --help
 ```
 
 If neither exists, tell the user how to install it (`brew install geragarazagh/tap/stt`) and stop. Never invent a transcript.
