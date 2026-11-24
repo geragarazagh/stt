@@ -17,8 +17,8 @@ import UIKit
 // recording's session.
 private let audioQueue = DispatchQueue(label: "com.geragaraza.stt.audio")
 
-// Models on the iPhone: Whisper and Parakeet, on every iPhone with iOS 26; Qwen stays on the Mac (his word 2026-11-11).
-let phoneModels = models.filter { $0.id != "Qwen3-ASR-1.7B" }
+// Models on the iPhone: Whisper and Parakeet, on every iPhone with iOS 26, the same two as the Mac since Qwen left (2026-11-24).
+let phoneModels = models
 
 @MainActor @Observable final class Dictation: RecordingHost {
     static let shared = Dictation()

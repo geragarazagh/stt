@@ -53,7 +53,7 @@ If neither exists, tell the user how to install it (`brew install geragarazagh/t
 
 ## Dictionary hygiene rules
 
-- **Words (`--add-word`)** feed Whisper's initial prompt and Qwen's vocabulary. Keep the personal list concise (~10–30 high-frequency names/terms); too many words dilute Whisper's prompt. Parakeet ignores the word list and uses replacements only.
+- **Words (`--add-word`)** feed Whisper's initial prompt. Keep the personal list concise (~10–30 high-frequency names/terms); too many words dilute Whisper's prompt. Parakeet ignores the word list and uses replacements only.
 - **Replacements (`--add-pair HEARD WRITTEN`)** run after recognition on every model and match Russian/Ukrainian case endings on Cyrillic heard forms automatically (`гитхаба` → `GitHub`).
 - Never add a heard form that is also an ordinary word in the user's language (for example `тему` or `сигнал`), or it will corrupt normal sentences.
 - When you spot a recurring unambiguous mishearing in the user's dictated messages, inspect `--list-pairs` first so you do not duplicate an existing rule, then add it or confirm once if ambiguous.

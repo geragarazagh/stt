@@ -2,7 +2,7 @@
 // a model keeps getting wrong. Measured 2026-11-10 on the author's 199 dictations: with only the built-in names 78 % of
 // names came out right; names outside the list failed (Handy 7 of 13, GigaAM 0 of 4); with his own words in Whisper's
 // prompt 80 %, exactly those words fixed (13 of 13, 4 of 4), nothing invented, the rest of the text unchanged.
-// - Words go into Whisper's prompt and Qwen's system message. Parakeet takes no hints in this engine, which the window says.
+// - Words go into Whisper's prompt. Parakeet takes no hints in this engine, which the window says.
 // - Replacements («клод» → «Claude») work on the text of any model, after recognition. Only what a person wrote: guessing
 //   sound-alikes from the word list fixed names but turned about 40 ordinary words into names («прочитай» → «Parakeet»).
 

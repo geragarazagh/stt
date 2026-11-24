@@ -42,7 +42,7 @@ final class Engine: @unchecked Sendable {
     private var vadModel: Model?
     private var vad: VadSession?
 
-    private var isWhisper = false, isQwen = false
+    private var isWhisper = false
     private var language: String?
     var forced: String?   // the language chosen in the window; nil lets the model detect it
     // The dictionary, copied in on the engine's queue: own words, then the built-in ones still kept, and the replacements.
@@ -57,9 +57,8 @@ final class Engine: @unchecked Sendable {
     // (garbled() below) is decoded again with it off (temperatureInc 0) at 0, 0.2 and 0.4 only.
     //
     // Whisper: the words, an example of punctuation (without one it often writes long runs of speech with none at all),
-    // and the end of the text so far, which keeps the grammar going across a cut. Qwen: the words in its system message.
+    // and the end of the text so far, which keeps the grammar going across a cut.
     private func options(_ code: String?, after text: String) -> RunOptions {
-        if isQwen { return RunOptions(language: forced, vocabulary: ownWords + builtIn) }
         guard isWhisper else { return RunOptions(language: forced) }
         return RunOptions(language: forced, family: .whisper(WhisperRunOptions(initialPrompt: prompt(code, after: text))))
     }
@@ -96,7 +95,6 @@ final class Engine: @unchecked Sendable {
         model = try Model(path: path)
         session = try model!.session()
         isWhisper = model!.arch == "whisper"
-        isQwen = model!.arch.hasPrefix("qwen")
     }
 
     // The native side asserts at exit when a Metal resource is still alive, so everything is let go first.

@@ -22,11 +22,6 @@ func sizeText(_ bytes: Int64) -> String {
 // The best model of each maker for dictation, named in plain words, biggest first: what a person
 // sees is the name, the size and whether it is here. Language codes are the models' own general.languages.
 let models: [ASRModel] = [
-    ASRModel(id: "Qwen3-ASR-1.7B", title: "Qwen",
-             languages: "zh en yue ar de fr es pt id it ko ru th vi ja tr hi ms nl sv da fi pl cs fil fa el ro hu mk".split(separator: " ").map(String.init),
-             file: "Qwen3-ASR-1.7B-Q8_0.gguf",
-             revision: "92282af1610a2db19d66f2bef1e260f5deca782d",
-             sha256: "9a0d81792dfea2d5f278b8a63deb3ea6e02139ce42c2301f32ea19c4f77526b7", size: 2185030624),
     ASRModel(id: "whisper-large-v3-turbo", title: "Whisper",
              languages: "af am ar as az ba be bg bn bo br bs ca cs cy da de el en es et eu fa fi fo fr gl gu haw ha he hi hr ht hu hy id is it ja jw ka kk km kn ko la lb ln lo lt lv mg mi mk ml mn mr ms mt my ne nl nn no oc pa pl ps pt ro ru sa sd si sk sl sn so sq sr su sv sw ta te tg th tk tl tr tt uk ur uz vi yi yo yue zh".split(separator: " ").map(String.init),
              file: "whisper-large-v3-turbo-Q8_0.gguf",
@@ -56,6 +51,23 @@ let appFolder: URL = {
     return FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent(name, isDirectory: true)
 }()
 let modelsFolder = appFolder.appendingPathComponent("models", isDirectory: true)
+
+// Models the app no longer offers, deleted at launch so their gigabytes don't stay where the window can't reach them;
+// a person who had one chosen gets the first model still here, or none (the window then offers a download).
+// Qwen3-ASR-1.7B, offered 0.1-0.11: dropped 2026-11-24 after the model research of that day: worst of the offered models on
+// his 202 dictations (10.8 % of words wrong against Whisper's 7.5, no ё, a third fewer commas, 31 clips with three or more
+// words wrong running against 14), no Ukrainian (42 % on FLEURS uk), 2.2 GB and 11x real time.
+let retiredModels = [(id: "Qwen3-ASR-1.7B", file: "Qwen3-ASR-1.7B-Q8_0.gguf")]
+func removeRetiredModels() {
+    for r in retiredModels {
+        try? FileManager.default.removeItem(at: modelsFolder.appendingPathComponent(r.file))
+        try? FileManager.default.removeItem(at: modelsFolder.appendingPathComponent(r.file + ".part"))
+        if UserDefaults.standard.string(forKey: "model") == r.id {
+            if let next = models.first(where: \.isHere) { UserDefaults.standard.set(next.id, forKey: "model") }
+            else { UserDefaults.standard.removeObject(forKey: "model") }
+        }
+    }
+}
 
 // Any file AVFoundation can open, video included: the first audio track as 16 kHz mono.
 func readMedia(_ url: URL) throws -> [Float] {

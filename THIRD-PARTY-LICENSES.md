@@ -303,6 +303,5 @@ No model is in the app or in this repository. Each is the GGUF conversion by han
 
 | In the app | Conversion | Original | License |
 |---|---|---|---|
-| Qwen | https://huggingface.co/handy-computer/Qwen3-ASR-1.7B-gguf | Qwen/Qwen3-ASR-1.7B | Apache-2.0 |
 | Whisper | https://huggingface.co/handy-computer/whisper-large-v3-turbo-gguf | openai/whisper-large-v3-turbo | MIT |
 | Parakeet | https://huggingface.co/handy-computer/parakeet-ultra-gguf | moondream/parakeet-ultra, trained further from nvidia/parakeet-tdt-0.6b-v3 | CC-BY-4.0 |

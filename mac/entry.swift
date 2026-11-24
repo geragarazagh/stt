@@ -7,7 +7,7 @@
 //
 // Why it is built this way:
 // - Engine: transcribe.cpp (MIT, vendor/ and Contents/Frameworks), the one Handy runs on since 2026: one API over
-//   Whisper, Parakeet and Qwen, each model a single .gguf file. A prebuilt framework, so no Xcode is needed.
+//   Whisper and Parakeet, each model a single .gguf file. A prebuilt framework, so no Xcode is needed.
 // - Long speech is cut at pauses into pieces of about 30 s, because most models lose accuracy past 30-40 s in one run,
 //   and silence is thrown out, because Whisper invents text on silence («Субтитры сделал...»).
 // - The text stays on the clipboard after pasting (Copy Text, on by default): if the paste misses, nothing is lost.
@@ -173,6 +173,7 @@ func startKeyTap(_ handler: @escaping (Int, Int, Bool, Bool) -> Bool) -> Bool {
         Store.shared.start()   // before the window reads its settings: what the person's other devices set comes first
         host = self
         mute.recoverAfterCrash()
+        removeRetiredModels()
         // A .part file lives only while the app runs; a crash can leave one behind.
         for m in models { try? FileManager.default.removeItem(at: m.path.appendingPathExtension("part")) }
         window = AppWindow(name: "STT", github: "https://github.com/geragarazagh/stt",

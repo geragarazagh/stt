@@ -8,7 +8,7 @@ Offline macOS & iOS speech-to-text app in plain Swift (AppKit, SwiftUI, Core Dat
 - `shared/dictionary.swift` — built-in `presetWords` (24) and `presetPairs` (104), `Words` storage + `add`/`remove` validation (`Words.problem`), case-aware Cyrillic replacement engine `replace()`.
 - `shared/store.swift` — `UserDefaults` + last-writer-wins `NSUbiquitousKeyValueStore` iCloud sync (`language`, `words`, `replacements`, `dictionaryChanged`, `subtitles`, `historyKeep`).
 - `shared/history.swift` — Core Data `History.sqlite` + 16 kHz mono AAC `<uuid>.m4a` files in `~/Library/Application Support/STT/History/`.
-- `shared/models.swift` — pinned GGUF models (Qwen, Whisper, Parakeet) with SHA-256 and Hugging Face revision hashes.
+- `shared/models.swift` — pinned GGUF models (Whisper, Parakeet; retired ones deleted at launch) with SHA-256 and Hugging Face revision hashes.
 - `shared/intents.swift` — Shortcuts App Intents (`Record`, `Start`, `Stop`, `Transcribe File`).
 - `mac/entry.swift` — `App` delegate, `AVAudioEngine` recorder (with `notBluetooth()`), session `CGEventTap` hot key, delivery (`Paste Text` / `Copy Text` / `borrowClipboard`), file queue.
 - `mac/cli.swift` — `stt-cli` CLI entry point + `Control` per-user `0600` Unix socket (`$TMPDIR/<bundle-id>.sock`) with `LOCAL_PEERTOKEN` designated-requirement verification and 1 s read deadline (`readSocket`).
