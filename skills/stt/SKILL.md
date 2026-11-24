@@ -63,4 +63,4 @@ If neither exists, tell the user how to install it (`brew install geragarazagh/t
 - Models: `~/Library/Application Support/STT/models/` (GGUF files).
 - History: `~/Library/Application Support/STT/History/` (`History.sqlite` + `<uuid>.m4a`).
 - Preferences: `defaults read com.geragaraza.stt`.
-- Source & rebuild: clone `https://github.com/geragarazagh/stt`, read `AGENTS.md`, edit Swift files, and run `./build` (requires only Xcode Command Line Tools for local ad-hoc builds).
+- Source & rebuild: clone `https://github.com/geragarazagh/stt`, read `AGENTS.md`, edit Swift files, and run `./build` (needs full Xcode: STT's SwiftUI macros are not in Command Line Tools).

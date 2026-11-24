@@ -18,7 +18,7 @@ Offline macOS & iOS speech-to-text app in plain Swift (AppKit, SwiftUI, Core Dat
 
 ## Build & Test
 
-- `./build` — builds ad-hoc signed `STT.app` (Apple Silicon, `-target arm64-apple-macos13.0`). Works with Xcode Command Line Tools alone (falls back to `iconutil` and skips `Metadata.appintents`). Full Xcode in `/Applications/Xcode.app` builds `Assets.car` and Shortcuts metadata (required when `SIGN_ID` is set).
+- `./build` — builds ad-hoc signed `STT.app` (Apple Silicon, `-target arm64-apple-macos13.0`). Needs full Xcode in `/Applications/Xcode.app` (or `XCODE_CONTENTS`): the SwiftUI windows use macros whose plugin ships only with Xcode, so Command Line Tools alone cannot build STT.
 - `TEST=1 ./build` — builds isolated `STT Test.app` (`com.geragaraza.stt.test`) with its own defaults, socket, and history folder. Always delete `STT Test.app` before running a release script.
 - `tests/socket-deadline` — unit test for `readSocket` total-deadline enforcement (needs no app).
 - `tests/synced-dictionary` — unit test for `Store.valid` / `Words.problem` validation.

@@ -11,6 +11,11 @@ has_xcode=0; [ -d "$xc/Developer" ] && [ -x "$xc/Applications/Icon Composer.app/
 if [ -n "${SIGN_ID:-}" ] && [ "$SIGN_ID" != - ] && [ $has_xcode -eq 0 ]; then
   echo "Developer ID builds require full Xcode at $xc (for Assets.car and App Intents metadata)"; exit 1
 fi
+# The windows use SwiftUI's @State, a macro whose plugin (libSwiftUIMacros) ships only inside Xcode: Command Line Tools
+# 27.2 alone stop with «plugin for module 'SwiftUIMacros' not found» (measured 2026-11-24). Say so before 30 s of errors.
+if [ $has_xcode -eq 0 ]; then
+  echo "STT needs full Xcode at $xc: its SwiftUI windows use macros whose plugin ships only with Xcode, not Command Line Tools"; exit 1
+fi
 # A test copy beside the real one (TEST=1): its own id, name and folder, so it shares no settings, grants or history.
 [ -n "${TEST:-}" ] && { id=com.geragaraza.stt.test app="STT Test.app" name="STT Test"; }
 tmp=$(mktemp -d); trap 'rm -rf $tmp' EXIT
