@@ -1,8 +1,8 @@
-// Settings, kept in this device's UserDefaults as before, and the ones a person sets once for all their devices also in
-// iCloud key-value storage (0.6): the same on every Mac and iPhone signed into one iCloud account, with no switch, the
+// Settings, kept in this Mac's UserDefaults as before, and the ones a person sets once for all their Macs also in
+// iCloud key-value storage (0.6): the same on every Mac signed into one iCloud account, with no switch, the
 // way macOS's own text replacements follow a person. Which keys: what is about the person and the language they speak
 // (language, the dictionary, the subtitles switch); the model, the keys, the sound and paste switches and Open at Login
-// stay with the device, since devices differ (an iPhone has no hot key, a smaller Mac may want a smaller model).
+// stay with the device, since Macs differ (a smaller Mac may want a smaller model).
 // - UserDefaults stays the truth: with no iCloud account, iCloud turned off or a build without the entitlement (built
 //   from source, or the command line) everything works as in 0.5 and nothing is sent anywhere.
 // - The later edit wins, key by key: each synced key goes to iCloud as {t: time of the edit, v: value}; a key with no v
@@ -16,9 +16,7 @@
 // Measured with the iPhone probe (2026-11-11): about 2 s each way; his iCloud quota unchanged to the byte.
 
 import Foundation
-#if os(macOS)
 import Security
-#endif
 
 @MainActor final class Store {
     static let shared = Store()
@@ -138,13 +136,9 @@ import Security
     }
 
     // iCloud key-value storage needs its entitlement, which only a build signed by the team with its provisioning
-    // profile carries; without it the store would only log errors. The iPhone app is always built with it.
+    // profile carries; without it the store would only log errors.
     static var mayUseCloud: Bool {
-        #if os(macOS)
         guard let task = SecTaskCreateFromSelf(nil) else { return false }
         return SecTaskCopyValueForEntitlement(task, "com.apple.developer.ubiquity-kvstore-identifier" as CFString, nil) != nil
-        #else
-        return true
-        #endif
     }
 }

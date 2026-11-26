@@ -1,5 +1,4 @@
-// What both apps, Mac and iPhone, share besides the engine: the models offered, where they are kept, the window's
-// words (L), and reading sound out of a file.
+// Models offered, where they are kept, the window's words (L), and reading sound out of a file.
 
 import AVFoundation
 import Foundation
@@ -36,17 +35,13 @@ let models: [ASRModel] = [
 
 // ~/Library/Application Support/STT/models: plain files, easy to find and to delete by hand. It appears only with the first
 // download and goes with the last delete. The name comes from the bundle so a test build keeps to its own folder.
-// On the Mac the bundle is found from the executable's real path (STT.app/Contents/MacOS/STT, three levels down), so
-// stt-cli run through a Homebrew symlink still reads the app's own folder; an iOS bundle is flat, so there it stays .main.
+// The bundle is found from the executable's real path (STT.app/Contents/MacOS/STT, three levels down), so
+// stt-cli run through a Homebrew symlink still reads the app's own folder.
 let appFolder: URL = {
-    #if os(macOS)
     // executableURL, not argv[0]: run by name from PATH (the Homebrew symlink) argv[0] is the bare name, and the bundle
     // three levels above it is the current folder's, not the app's (measured 2026-11-23: version 0, settings unread).
     let real = (Bundle.main.executableURL ?? URL(fileURLWithPath: CommandLine.arguments[0])).resolvingSymlinksInPath()
     let bundle = Bundle(url: real.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()) ?? .main
-    #else
-    let bundle = Bundle.main
-    #endif
     let name = bundle.object(forInfoDictionaryKey: "CFBundleName") as? String ?? "STT"
     return FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent(name, isDirectory: true)
 }()

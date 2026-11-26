@@ -32,7 +32,7 @@ If neither exists, tell the user how to install it (`brew install geragarazagh/t
    stt-cli --status
    stt-cli --status --json
    ```
-3. **Maintain the dictionary** (edits sync to iPhone via iCloud and reload live; requires STT running — start silently with `open -g -a STT --args --background` if needed):
+3. **Maintain the dictionary** (edits sync across Macs via iCloud and reload live; requires STT running — start silently with `open -g -a STT --args --background` if needed):
    ```sh
    stt-cli --list-words
    stt-cli --list-pairs

@@ -1,5 +1,5 @@
 #!/bin/zsh
-# Builds STT.app in this folder from shared/ (what the Mac and iPhone apps share) and mac/.
+# Builds STT.app in this folder from shared/ and mac/.
 # Works with Xcode Command Line Tools alone for ad-hoc local builds; full Xcode in /Applications is used for
 # Shortcuts metadata and Icon Composer (required for Developer ID signed releases).
 set -e

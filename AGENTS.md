@@ -1,6 +1,6 @@
 # AGENTS.md — STT
 
-Offline macOS & iOS speech-to-text app in plain Swift (AppKit, SwiftUI, Core Data, `transcribe.cpp`). No Xcode project for Mac; `./build` compiles everything directly with `swiftc`.
+Offline macOS speech-to-text app in plain Swift (AppKit, SwiftUI, Core Data, `transcribe.cpp`). No Xcode project; `./build` compiles everything directly with `swiftc`.
 
 ## Architecture
 
@@ -14,7 +14,6 @@ Offline macOS & iOS speech-to-text app in plain Swift (AppKit, SwiftUI, Core Dat
 - `mac/cli.swift` — `stt-cli` CLI entry point + `Control` per-user `0600` Unix socket (`$TMPDIR/<bundle-id>.sock`) with `LOCAL_PEERTOKEN` designated-requirement verification and 1 s read deadline (`readSocket`).
 - `mac/main-window.swift`, `mac/window.swift`, `mac/dictionary-window.swift`, `mac/files.swift` — History, Settings, Dictionary, and Files windows.
 - `mac/icon.swift` — procedural 11-bar waveform icon generator.
-- `ios/` — iPhone app sharing `shared/`.
 
 ## Build & Test
 
