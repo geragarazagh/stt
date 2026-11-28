@@ -5,7 +5,7 @@
 set -e
 cd "${0:A:h}"
 # It changes per release, not per build.
-version=0.11 min=13.0 id=com.geragaraza.stt app=STT.app engine=0.4.1 name=STT
+version=0.12 min=13.0 id=com.geragaraza.stt app=STT.app engine=0.4.1 name=STT
 xc=${XCODE_CONTENTS:-/Applications/Xcode.app/Contents}
 has_xcode=0; [ -d "$xc/Developer" ] && [ -x "$xc/Applications/Icon Composer.app/Contents/Executables/ictool" ] && has_xcode=1
 if [ -n "${SIGN_ID:-}" ] && [ "$SIGN_ID" != - ] && [ $has_xcode -eq 0 ]; then
