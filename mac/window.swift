@@ -129,6 +129,11 @@ final class AppIconView: NSImageView {
     // Whether launching asked for a window (first launch, a key that failed, opened by hand). STT shows its main window
     // then and this one only when it is needed (showsAtLaunch false); the apps whose only window this is show it.
     var wantedAtLaunch = false
+    // Kept: a monitor whose token nobody holds is reachable only inside AppKit, and `leaks` reports it as a root leak.
+    var keyMonitor: Any?
+    // SMAppService.status is a synchronous call to smd. On the main thread it held the window 0.6-3 s on every
+    // activation in the stress matrix (2026-11-27), so it is asked on a background queue, one question at a time.
+    private var loginAsking = false, loginAgain = false, loginGeneration = 0
 
     init(name: String, github: String, defaultShortcut: Shortcut, defaultCancel: Shortcut? = nil, above: NSView? = nil, extra: NSView? = nil, showsAtLaunch: Bool = true, release: (() -> Void)? = nil, action: @escaping () -> Void) {
         self.extra = extra
@@ -156,7 +161,7 @@ final class AppIconView: NSImageView {
 
         build()
         _ = Updates.shared   // starts the daily check
-        NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] e in
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] e in
             guard let self else { return e }
             return self.keyDown(e)
         }
@@ -273,10 +278,25 @@ final class AppIconView: NSImageView {
         keyButton.state = .off
         if let cancelKey { cancelButton.title = title(cancelKey); cancelButton.state = .off }
         status.stringValue = ""
-        loginSwitch.state = login.status == .enabled ? .on : .off
+        refreshLogin()
     }
 
-    func windowDidBecomeKey(_ n: Notification) { loginSwitch.state = login.status == .enabled ? .on : .off }
+    func refreshLogin() {
+        if loginAsking { loginAgain = true; return }
+        loginAsking = true
+        let login = login, generation = loginGeneration
+        DispatchQueue.global(qos: .userInitiated).async {
+            let on = login.status == .enabled
+            DispatchQueue.main.async {
+                self.loginAsking = false
+                // A click on the switch meanwhile set it from a fresher answer.
+                if generation == self.loginGeneration { self.loginSwitch.state = on ? .on : .off }
+                if self.loginAgain { self.loginAgain = false; self.refreshLogin() }
+            }
+        }
+    }
+
+    func windowDidBecomeKey(_ n: Notification) { refreshLogin() }
     func windowDidResignKey(_ n: Notification) { cancelRecording() }
     func windowWillClose(_ n: Notification) { cancelRecording() }
 
@@ -294,6 +314,7 @@ final class AppIconView: NSImageView {
         } catch {
             report("\(name): \(L("Open at Login"))", "\(error)")
         }
+        loginGeneration += 1
         loginSwitch.state = login.status == .enabled ? .on : .off
     }
 

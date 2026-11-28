@@ -119,6 +119,7 @@ final class WindowDrop: NSView {
     let panel = NSPanel(contentRect: NSRect(x: 0, y: 0, width: 340, height: 220), styleMask: [.titled, .closable, .nonactivatingPanel], backing: .buffered, defer: false)
     let area = DropArea(frame: NSRect(x: 20, y: 20, width: 300, height: 180))   // 20 pt from every edge and from the title bar
     private let symbol = NSImageView()
+    private var keyMonitor: Any?   // held, or `leaks` reports the monitor as a root leak (AppWindow.keyMonitor)
     private let line = NSTextField(labelWithString: "")
     private let detail = NSTextField(labelWithString: "")
     private let choose = NSButton(title: "", target: nil, action: nil)
@@ -186,7 +187,7 @@ final class WindowDrop: NSView {
         stop.refusesFirstResponder = true
         area.addSubview(stop)
 
-        NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] e in
+        keyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] e in
             guard let self, e.window === self.panel else { return e }
             let mods = e.modifierFlags.intersection([.command, .option, .control, .shift])
             if e.keyCode == 53 && mods.isEmpty || e.keyCode == 13 && mods == .command { self.panel.performClose(nil); return nil }
